@@ -66,8 +66,8 @@ _env_config = _load_env_txt()
 # 按优先级: 环境变量 > env.txt > 默认值
 BACKEND_HOST = os.environ.get('BACKEND_HOST', _env_config.get('BACKEND_HOST', '0.0.0.0'))
 BACKEND_PORT = int(os.environ.get('BACKEND_PORT', _env_config.get('BACKEND_PORT', '8000')))
-CENTER_LAT = float(os.environ.get('CENTER_LAT', _env_config.get('CENTER_LAT', '30.0')))
-CENTER_LNG = float(os.environ.get('CENTER_LNG', _env_config.get('CENTER_LNG', '120.0')))
+CENTER_LAT = float(os.environ.get('CENTER_LAT', _env_config.get('CENTER_LAT', '0.0')))
+CENTER_LNG = float(os.environ.get('CENTER_LNG', _env_config.get('CENTER_LNG', '0.0')))
 # 仿真模式：设为 "frontend" 则后端不生成模拟数据（前端 Three.js 自行仿真）
 SIM_MODE = os.environ.get('SIM_MODE', _env_config.get('SIM_MODE', 'backend')).lower()
 
@@ -79,9 +79,9 @@ SIM_MODE = os.environ.get('SIM_MODE', _env_config.get('SIM_MODE', 'backend')).lo
 class VehiclePosition:
     """载具位置"""
     id: str                     # uav / ugv
-    latitude: float = 30.0
-    longitude: float = 120.0
-    altitude: float = 0.0
+    latitude: float = 0.0
+    longitude: float = 0.0
+    altitude: float = 100.0
     heading: float = 0.0        # 航向角 (度)
     speed: float = 0.0          # 速度 (m/s)
     timestamp: float = 0.0
@@ -96,9 +96,9 @@ class VehicleStatus:
     battery: float = 100.0
     battery_voltage: float = 0.0
     status_text: str = '离线'
-    latitude: float = 30.0
-    longitude: float = 120.0
-    altitude: float = 0.0
+    latitude: float = 0.0
+    longitude: float = 0.0
+    altitude: float = 100.0
     last_update: float = 0.0
 
 
@@ -149,8 +149,8 @@ class MissionStatus:
 @dataclass
 class NavGoal:
     """导航目标点"""
-    target_lat: float = 30.0
-    target_lon: float = 120.0
+    target_lat: float = 0.0
+    target_lon: float = 0.0
     target_yaw: float = 0.0
     max_linear_speed: float = 0.0
     max_angular_speed: float = 0.0
@@ -417,16 +417,15 @@ async def health_check():
 async def update_uav(data: dict):
     """ROS2 桥接: 更新 UAV 状态"""
     app_state.update_uav(
-        lat=data.get('lat', 30.0),
-        lon=data.get('lon', 120.0),
-        alt=data.get('alt', 0.0),
+        lat=data.get('lat', 0.0),
+        lon=data.get('lon', 0.0),
+        alt=data.get('alt', 100.0),
         heading=data.get('heading', 0.0),
         speed=data.get('speed', 0.0),
-        flight_mode=data.get('flight_mode', 0),
-        armed=data.get('armed', False),
         battery=data.get('battery', 100.0),
-        battery_v=data.get('battery_v', 22.8),
+        battery_v=data.get('battery_v', 24.0),
         status_text=data.get('status_text', '未知'),
+        remote_control=data.get('remote_control', False),
     )
     return {'status': 'ok'}
 
@@ -434,9 +433,9 @@ async def update_uav(data: dict):
 async def update_ugv(data: dict):
     """ROS2 桥接: 更新 UGV 状态"""
     app_state.update_ugv(
-        lat=data.get('lat', 30.0),
-        lon=data.get('lon', 120.0),
-        alt=data.get('alt', 0.0),
+        lat=data.get('lat', 0.0),
+        lon=data.get('lon', 0.0),
+        alt=data.get('alt', 100.0),
         heading=data.get('heading', 0.0),
         speed=data.get('speed', 0.0),
         battery=data.get('battery', 100.0),
@@ -455,7 +454,7 @@ async def uav_mission_upload(data: dict):
     """
     上传航点任务
     请求体: {
-        "waypoints": [{"lat": 30.0, "lon": 120.0, "alt": 50, "speed": 8, ...}],
+        "waypoints": [{"lat": 0.0, "lon": 0.0, "alt": 100, "speed": 8, ...}],
         "route_type": 0,           // 0=自定义 1=多边形 2=蛇形
         "camera_trigger_mode": 0,  // 0=等距 1=等时
         "camera_trigger_interval": 50.0,
@@ -465,8 +464,8 @@ async def uav_mission_upload(data: dict):
     waypoints_raw = data.get('waypoints', [])
     waypoints = [
         WaypointData(
-            lat=wp.get('lat', 30.0),
-            lon=wp.get('lon', 120.0),
+            lat=wp.get('lat', 0.0),
+            lon=wp.get('lon', 0.0),
             alt=wp.get('alt', 50.0),
             speed=wp.get('speed', 8.0),
             heading=wp.get('heading', 0.0),
@@ -570,8 +569,8 @@ async def ugv_nav_goal(data: dict):
         "max_angular_speed": 1.5
     }
     """
-    target_lat = data.get('target_lat', 30.0)
-    target_lon = data.get('target_lon', 120.0)
+    target_lat = data.get('target_lat', 0.0)
+    target_lon = data.get('target_lon', 0.0)
     target_yaw = data.get('target_yaw', 0.0)
     max_linear_speed = data.get('max_linear_speed', 0.0)
     max_angular_speed = data.get('max_angular_speed', 0.0)
@@ -768,12 +767,12 @@ def _extract_replay_frames(bag_path: str) -> List[ReplayFrame]:
                 t = (ts_ns - sorted_ts[0]) / 1e9
                 frame = ReplayFrame(
                     timestamp=ts_ns / 1e9,
-                    uav_lat=30.0 + 0.001 * math.sin(t * 0.5),
-                    uav_lon=120.0 + 0.0015 * math.cos(t * 0.3),
-                    uav_alt=50.0 + 20.0 * math.sin(t * 0.4),
+                    uav_lat=0.0 + 0.001 * math.sin(t * 0.5),
+                    uav_lon=0.0 + 0.0015 * math.cos(t * 0.3),
+                    uav_alt=100.0 + 20.0 * math.sin(t * 0.4),
                     uav_heading=(t * 30) % 360,
-                    ugv_lat=30.0 + 0.0003 * math.sin(t * 0.2),
-                    ugv_lon=120.0 + 0.001 * math.cos(t * 0.4),
+                    ugv_lat=0.0 + 0.0003 * math.sin(t * 0.2),
+                    ugv_lon=0.0 + 0.001 * math.cos(t * 0.4),
                     ugv_heading=(t * 20) % 360,
                 )
                 frames.append(frame)
@@ -784,12 +783,12 @@ def _extract_replay_frames(bag_path: str) -> List[ReplayFrame]:
             t = i * 0.5
             frame = ReplayFrame(
                 timestamp=t,
-                uav_lat=30.0 + 0.001 * math.sin(t * 0.5),
-                uav_lon=120.0 + 0.0015 * math.cos(t * 0.3),
-                uav_alt=50.0 + 20.0 * math.sin(t * 0.4),
+                uav_lat=0.0 + 0.001 * math.sin(t * 0.5),
+                uav_lon=0.0 + 0.0015 * math.cos(t * 0.3),
+                uav_alt=100.0 + 20.0 * math.sin(t * 0.4),
                 uav_heading=(t * 30) % 360,
-                ugv_lat=30.0 + 0.0003 * math.sin(t * 0.2),
-                ugv_lon=120.0 + 0.001 * math.cos(t * 0.4),
+                ugv_lat=0.0 + 0.0003 * math.sin(t * 0.2),
+                ugv_lon=0.0 + 0.001 * math.cos(t * 0.4),
                 ugv_heading=(t * 20) % 360,
             )
             frames.append(frame)
@@ -1213,7 +1212,7 @@ async def mock_data_generator():
         cos_lat = math.cos(math.radians(center_lat))
         uav_lat = center_lat + 0.001 * math.sin(t * 0.5)       # 约 111m 振幅
         uav_lon = center_lon + 0.0015 * math.cos(t * 0.3)      # 约 167m 振幅
-        uav_alt = 50.0 + 20.0 * math.sin(t * 0.4)               # 50-70m 高度
+        uav_alt = 100.0 + 20.0 * math.sin(t * 0.4)               # 100-120m 高度
         uav_heading = math.degrees(math.atan2(
             math.cos(t * 0.3) * 0.0015 * 0.3,
             -math.cos(t * 0.5) * 0.001 * 0.5
@@ -1228,7 +1227,7 @@ async def mock_data_generator():
         ugv_phase = (t * 0.2) % (2 * math.pi)
         ugv_lat = center_lat + 0.0003 * math.sin(ugv_phase)     # 约 33m
         ugv_lon = center_lon + 0.001 * math.cos(ugv_phase * 2)  # 约 111m
-        ugv_alt = 0.0
+        ugv_alt = 100.0
         ugv_heading = math.degrees(math.atan2(
             math.cos(ugv_phase) * 0.0003,
             -math.sin(ugv_phase * 2) * 0.002

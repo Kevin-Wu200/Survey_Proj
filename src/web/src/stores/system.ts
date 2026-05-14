@@ -50,7 +50,7 @@ export const useSystemStore = defineStore('system', () => {
     }
     if (uav) return { lng: uav.longitude, lat: uav.latitude }
     if (ugv) return { lng: ugv.longitude, lat: ugv.latitude }
-    return { lng: 120.0, lat: 30.0 }
+    return { lng: 0.0, lat: 0.0 }
   })
 
   return {

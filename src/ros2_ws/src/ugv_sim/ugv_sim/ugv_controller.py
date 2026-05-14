@@ -24,9 +24,9 @@ class UGVController(Node):
         super().__init__('ugv_controller')
 
         # --- 参数 ---
-        self.declare_parameter('home_lat', 30.0)
-        self.declare_parameter('home_lon', 120.0)
-        self.declare_parameter('home_alt', 0.0)
+        self.declare_parameter('home_lat', 0.0)
+        self.declare_parameter('home_lon', 0.0)
+        self.declare_parameter('home_alt', 100.0)
         self.declare_parameter('wheel_base', 0.5)         # 轴距 (m)
         self.declare_parameter('max_linear_speed', 3.0)   # 最大线速度 (m/s)
         self.declare_parameter('max_angular_speed', 2.0)  # 最大角速度 (rad/s)

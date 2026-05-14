@@ -34,9 +34,9 @@ class Ros2WebsocketBridge(Node):
 
         # --- 最新数据缓存 ---
         self.lock = threading.Lock()
-        self._uav_lat = 30.0
-        self._uav_lon = 120.0
-        self._uav_alt = 0.0
+        self._uav_lat = 0.0
+        self._uav_lon = 0.0
+        self._uav_alt = 100.0
         self._uav_heading = 0.0
         self._uav_speed = 0.0
         self._uav_flight_mode = 0
@@ -45,9 +45,9 @@ class Ros2WebsocketBridge(Node):
         self._uav_battery_v = 22.8
         self._uav_status_text = '待机'
 
-        self._ugv_lat = 30.0
-        self._ugv_lon = 120.0
-        self._ugv_alt = 0.0
+        self._ugv_lat = 0.0
+        self._ugv_lon = 0.0
+        self._ugv_alt = 100.0
         self._ugv_heading = 0.0
         self._ugv_speed = 0.0
         self._ugv_battery = 100.0

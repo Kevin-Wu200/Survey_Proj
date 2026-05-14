@@ -310,8 +310,8 @@ class UGVNavController(Node):
         # --- 参数 ---
         self.declare_parameter('update_rate', 20.0)
         self.declare_parameter('use_gazebo', True)
-        self.declare_parameter('home_lat', 30.0)
-        self.declare_parameter('home_lon', 120.0)
+        self.declare_parameter('home_lat', 0.0)
+        self.declare_parameter('home_lon', 0.0)
         self.declare_parameter('costmap_resolution', 0.05)
         self.declare_parameter('costmap_width', 10.0)
         self.declare_parameter('costmap_height', 10.0)

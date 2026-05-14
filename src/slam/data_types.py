@@ -30,7 +30,7 @@ class Pose3D:
     @classmethod
     def from_rtk(cls, lat: float, lon: float, alt: float,
                  roll: float = 0.0, pitch: float = 0.0, yaw: float = 0.0,
-                 home_lat: float = 30.0, home_lon: float = 120.0) -> "Pose3D":
+                 home_lat: float = 0.0, home_lon: float = 0.0) -> "Pose3D":
         """从 RTK 经纬度+姿态角构建位姿（局部ENU坐标系）"""
         cos_lat = np.cos(np.radians(home_lat))
         x = (lon - home_lon) * 111320.0 * cos_lat

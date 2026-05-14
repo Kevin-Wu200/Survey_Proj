@@ -94,21 +94,21 @@ function worldToLatLng(
 export function useSimulation(
   terrainQuery: TerrainQueryInstance,
 ): SimulationInstance {
-  // 地理坐标原点（与 GLB 场景绑定）
-  let _geoOrigin = { lat: 30.0, lng: 120.0, alt: 0.0 }
+  // 地理坐标原点（与 GLB 场景绑定），WGS84 赤道原点，高程 100m
+  let _geoOrigin = { lat: 0.0, lng: 0.0, alt: 100.0 }
 
   // 仿真状态
   const uavState = ref<SimVehicleState>({
-    latitude: 30.0, longitude: 120.0, altitude: 80,
+    latitude: 0.0, longitude: 0.0, altitude: 100,
     heading: 0, speed: 0,
   })
   const ugvState = ref<SimVehicleState>({
-    latitude: 30.0, longitude: 120.0, altitude: 0,
+    latitude: 0.0, longitude: 0.0, altitude: 100,
     heading: 0, speed: 0,
     slopeAngle: 0, blocked: false,
   })
 
-  const uavTargetAlt = ref(80)  // 默认 UAV 飞行高度 80m
+  const uavTargetAlt = ref(100)  // 默认 UAV 飞行高度 100m
   const isRunning = ref(false)
 
   let _animationId: number | null = null

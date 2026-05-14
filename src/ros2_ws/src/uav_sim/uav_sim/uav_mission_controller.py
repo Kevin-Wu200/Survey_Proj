@@ -95,7 +95,7 @@ class WaypointMissionManager:
         生成多边形航线航点
         
         参数: {
-            "center_lat": 30.0, "center_lon": 120.0,
+            "center_lat": 0.0, "center_lon": 0.0,
             "radius": 200.0,      # 多边形半径 (米)
             "sides": 6,           # 边数
             "altitude": 50.0,     # 飞行高度 (米)
@@ -108,8 +108,8 @@ class WaypointMissionManager:
         except:
             params = {}
         
-        center_lat = params.get('center_lat', 30.0)
-        center_lon = params.get('center_lon', 120.0)
+        center_lat = params.get('center_lat', 0.0)
+        center_lon = params.get('center_lon', 0.0)
         radius = params.get('radius', 200.0)
         sides = max(3, params.get('sides', 6))
         altitude = params.get('altitude', 50.0)
@@ -152,7 +152,7 @@ class WaypointMissionManager:
         生成蛇形/弓字形航线航点
         
         参数: {
-            "start_lat": 30.0, "start_lon": 120.0,
+            "start_lat": 0.0, "start_lon": 0.0,
             "end_lat": 30.002, "end_lon": 120.002,
             "line_spacing": 50.0,   # 扫描线间距 (米)
             "altitude": 50.0,       # 飞行高度 (米)
@@ -165,8 +165,8 @@ class WaypointMissionManager:
         except:
             params = {}
         
-        start_lat = params.get('start_lat', 30.0)
-        start_lon = params.get('start_lon', 120.0)
+        start_lat = params.get('start_lat', 0.0)
+        start_lon = params.get('start_lon', 0.0)
         end_lat = params.get('end_lat', 30.002)
         end_lon = params.get('end_lon', 120.002)
         line_spacing = params.get('line_spacing', 50.0)

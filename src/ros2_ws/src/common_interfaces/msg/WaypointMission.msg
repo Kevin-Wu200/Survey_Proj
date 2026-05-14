@@ -4,7 +4,7 @@ std_msgs/Header header
 # 任务动作: 0=上传航点 1=启动任务 2=暂停 3=恢复 4=停止 5=查询状态
 uint8 action
 
-# 航点数据 (JSON 字符串，格式: [{"lat": 30.0, "lon": 120.0, "alt": 50.0, "speed": 8.0, "heading": 0.0, "action": "photo"}, ...])
+# 航点数据 (JSON 字符串，格式: [{"lat": 0.0, "lon": 0.0, "alt": 100.0, "speed": 8.0, "heading": 0.0, "action": "photo"}, ...])
 string waypoints_json
 
 # 任务ID

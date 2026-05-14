@@ -14,8 +14,8 @@ from launch.conditions import IfCondition
 def generate_launch_description():
     # --- 参数 ---
     use_gazebo = LaunchConfiguration('use_gazebo', default='true')
-    home_lat = LaunchConfiguration('home_lat', default='30.0')
-    home_lon = LaunchConfiguration('home_lon', default='120.0')
+    home_lat = LaunchConfiguration('home_lat', default='0.0')
+    home_lon = LaunchConfiguration('home_lon', default='0.0')
     takeoff_height = LaunchConfiguration('takeoff_height', default='10.0')
 
     # --- UAV 控制器节点 ---
@@ -27,7 +27,7 @@ def generate_launch_description():
         parameters=[{
             'home_lat': home_lat,
             'home_lon': home_lon,
-            'home_alt': 0.0,
+            'home_alt': 100.0,
             'takeoff_height': takeoff_height,
             'hover_duration': 30.0,
             'update_rate': 20.0,
@@ -73,10 +73,10 @@ def generate_launch_description():
         'use_gazebo', default_value='true',
         description='是否启动 Gazebo 仿真')
     declare_home_lat = DeclareLaunchArgument(
-        'home_lat', default_value='30.0',
+        'home_lat', default_value='0.0',
         description='起飞点纬度')
     declare_home_lon = DeclareLaunchArgument(
-        'home_lon', default_value='120.0',
+        'home_lon', default_value='0.0',
         description='起飞点经度')
     declare_takeoff_height = DeclareLaunchArgument(
         'takeoff_height', default_value='10.0',

@@ -1,9 +1,9 @@
 # UAV 仿真参数配置
 uav_controller:
   ros__parameters:
-    home_lat: 30.0
-    home_lon: 120.0
-    home_alt: 0.0
+    home_lat: 0.0
+    home_lon: 0.0
+    home_alt: 100.0
     takeoff_height: 10.0       # 起飞高度 (m)
     hover_duration: 30.0       # 悬停持续时间 (秒)
     update_rate: 20.0          # 控制更新频率 (Hz)

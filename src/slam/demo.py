@@ -35,8 +35,8 @@ from src.slam.data_types import ScanData, IMUData, StereoImage
 
 
 def generate_uav_flight_trajectory(n_points: int = 50,
-                                    home_lat: float = 30.0,
-                                    home_lon: float = 120.0,
+                                    home_lat: float = 0.0,
+                                    home_lon: float = 0.0,
                                     altitude: float = 100.0,
                                     radius: float = 200.0) -> list:
     """生成模拟 UAV 圆形飞行轨迹（含 RTK 位姿）"""

@@ -169,7 +169,7 @@ async function onSceneChange(): Promise<void> {
     if (!sceneInfo) throw new Error('场景信息未找到')
 
     // 加载场景元数据
-    let geoOrigin = { lat: 30.0, lng: 120.0, alt: 0.0 }
+    let geoOrigin = { lat: 0.0, lng: 0.0, alt: 100.0 }
     const metaPath = selectedScene.value.replace(/\.glb$/i, '_metadata.json')
       .replace(/(.+)\.glb$/, '$1/metadata.json')
     try {
@@ -178,9 +178,9 @@ async function onSceneChange(): Promise<void> {
         const meta = await metaRes.json()
         if (meta.geoOrigin) {
           geoOrigin = {
-            lat: meta.geoOrigin.lat ?? 30.0,
-            lng: meta.geoOrigin.lng ?? 120.0,
-            alt: meta.geoOrigin.alt ?? 0.0,
+            lat: meta.geoOrigin.lat ?? 0.0,
+            lng: meta.geoOrigin.lng ?? 0.0,
+            alt: meta.geoOrigin.alt ?? 100.0,
           }
         }
       }

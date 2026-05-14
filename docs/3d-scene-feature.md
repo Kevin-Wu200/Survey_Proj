@@ -113,7 +113,7 @@ watch(ugvState) → threeMarkers.updateUGV() → 更新 Sprite + 轨迹
 {
   "displayName": "城市测绘场景",
   "description": "杭州市某区域三维模型",
-  "geoOrigin": { "lat": 30.0, "lng": 120.0, "alt": 0 },
+  "geoOrigin": { "lat": 0.0, "lng": 0.0, "alt": 100 },
   "scale": 1.0,
   "rotation": { "x": 0, "y": 0, "z": 0 }
 }

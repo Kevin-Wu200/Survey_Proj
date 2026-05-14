@@ -208,8 +208,8 @@ async function uploadMission() {
     payload.waypoints = customWaypoints.value
   } else if (routeType.value === 1) {
     payload.mission_params = {
-      center_lat: store.uavPosition?.latitude ?? 30.0,
-      center_lon: store.uavPosition?.longitude ?? 120.0,
+      center_lat: store.uavPosition?.latitude ?? 0.0,
+      center_lon: store.uavPosition?.longitude ?? 0.0,
       radius: polygonRadius.value,
       sides: polygonSides.value,
       altitude: altitude.value,

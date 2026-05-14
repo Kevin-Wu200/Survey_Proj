@@ -14,8 +14,8 @@ from launch.conditions import IfCondition
 def generate_launch_description():
     # --- 参数 ---
     use_gazebo = LaunchConfiguration('use_gazebo', default='true')
-    home_lat = LaunchConfiguration('home_lat', default='30.0')
-    home_lon = LaunchConfiguration('home_lon', default='120.0')
+    home_lat = LaunchConfiguration('home_lat', default='0.0')
+    home_lon = LaunchConfiguration('home_lon', default='0.0')
 
     # --- UGV 控制器节点 ---
     ugv_controller = Node(
@@ -26,7 +26,7 @@ def generate_launch_description():
         parameters=[{
             'home_lat': home_lat,
             'home_lon': home_lon,
-            'home_alt': 0.0,
+            'home_alt': 100.0,
             'max_linear_speed': 3.0,
             'max_angular_speed': 2.0,
             'update_rate': 20.0,
@@ -85,10 +85,10 @@ def generate_launch_description():
         'use_gazebo', default_value='true',
         description='是否启动 Gazebo 仿真')
     declare_home_lat = DeclareLaunchArgument(
-        'home_lat', default_value='30.0',
+        'home_lat', default_value='0.0',
         description='起点纬度')
     declare_home_lon = DeclareLaunchArgument(
-        'home_lon', default_value='120.0',
+        'home_lon', default_value='0.0',
         description='起点经度')
 
     return LaunchDescription([
