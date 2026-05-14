@@ -1418,6 +1418,323 @@ async def system_statistics():
 
 
 # =============================================================================
+# 四阶段 4.5 - 采集进度
+# =============================================================================
+
+# 内存中采集进度缓存（实时更新，不入库）
+_collection_progress: Dict[int, dict] = {}
+
+@app.get('/api/collection/progress/{task_id}')
+async def get_collection_progress(task_id: int):
+    """
+    获取指定任务的采集进度。
+    返回: {
+        "task_id": 1, "task_name": "xxx",
+        "total_area_sqm": 5000.0, "surveyed_area_sqm": 3200.0,
+        "progress_percent": 64.0, "estimated_completion_time": 1680000000.0,
+        "elapsed_seconds": 1200.0, "uav_photos_taken": 85, "ugv_distance_m": 450.0,
+        "status": "surveying"
+    }
+    """
+    if task_id in _collection_progress:
+        return JSONResponse(_collection_progress[task_id])
+
+    # 尝试从数据库构建进度
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '无采集进度数据'}, status_code=404)
+    try:
+        task = db.get_task(task_id)
+        if task is None:
+            return JSONResponse({'error': '任务不存在'}, status_code=404)
+        stats = db.get_task_statistics(task_id)
+        return JSONResponse({
+            'task_id': task_id,
+            'task_name': task.get('task_name', ''),
+            'total_area_sqm': float(task.get('area_sqm', 0) or 0),
+            'surveyed_area_sqm': 0.0,
+            'progress_percent': 0.0,
+            'estimated_completion_time': 0,
+            'elapsed_seconds': 0.0,
+            'uav_photos_taken': stats.get('waypoints_count', 0) or 0,
+            'ugv_distance_m': 0.0,
+            'status': task.get('status', 'pending'),
+        })
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.post('/api/collection/progress/{task_id}')
+async def update_collection_progress(task_id: int, data: dict):
+    """
+    更新采集进度（由 ROS2 地面站节点或仿真器调用）。
+    请求体: {
+        "surveyed_area_sqm": 3200.0,
+        "uav_photos_taken": 85,
+        "ugv_distance_m": 450.0,
+        "status": "surveying"
+    }
+    """
+    db = _get_db()
+    task_name = ''
+    total_area = 0.0
+    if db is not None:
+        try:
+            task = db.get_task(task_id)
+            if task:
+                task_name = task.get('task_name', '')
+                total_area = float(task.get('area_sqm', 0) or 0)
+        except Exception:
+            pass
+
+    surveyed = float(data.get('surveyed_area_sqm', 0))
+    total = float(data.get('total_area_sqm', total_area))
+    if total <= 0 and surveyed > 0:
+        total = surveyed
+    progress = (surveyed / total * 100.0) if total > 0 else 0.0
+
+    _collection_progress[task_id] = {
+        'task_id': task_id,
+        'task_name': task_name,
+        'total_area_sqm': total,
+        'surveyed_area_sqm': surveyed,
+        'progress_percent': round(progress, 1),
+        'estimated_completion_time': data.get('estimated_completion_time', 0),
+        'elapsed_seconds': float(data.get('elapsed_seconds', 0)),
+        'uav_photos_taken': int(data.get('uav_photos_taken', 0)),
+        'ugv_distance_m': float(data.get('ugv_distance_m', 0)),
+        'status': data.get('status', 'surveying'),
+    }
+    return {'status': 'ok', 'task_id': task_id}
+
+
+# =============================================================================
+# 四阶段 4.5 - PGW 世界文件自动生成
+# =============================================================================
+
+@app.post('/api/pgw/generate')
+async def generate_pgw(
+    model_filename: str = Form(description="GLB 模型文件名（位于 3D_Model/ 目录下）"),
+    image_width: int = Form(default=2048, description="2D 地图图像宽度"),
+    image_height: int = Form(default=2048, description="2D 地图图像高度"),
+    margin: float = Form(default=0.05, description="边距比例"),
+):
+    """
+    根据 GLB 模型自动计算 .pgw 世界文件参数。
+    返回 6 行世界文件内容，客户端可直接保存为 .pgw 文件。
+
+    表单参数:
+        model_filename - GLB 模型文件名（如 terrain.glb）
+        image_width    - 2D 地图渲染图像宽度（默认 2048）
+        image_height   - 2D 地图渲染图像高度（默认 2048）
+        margin         - 模型范围边距比例（默认 0.05）
+    """
+    import numpy as np
+
+    # 安全检查
+    if '..' in model_filename or model_filename.startswith('/'):
+        return JSONResponse({'error': '非法文件名'}, status_code=400)
+
+    model_path = _SCENES_DIR / model_filename
+    if not model_path.exists():
+        return JSONResponse({'error': f'模型文件不存在: {model_filename}'}, status_code=404)
+
+    try:
+        import trimesh
+        scene = trimesh.load(str(model_path))
+        if isinstance(scene, trimesh.Trimesh):
+            scene = trimesh.Scene([scene])
+
+        all_verts = []
+        for g in scene.geometry.values():
+            if hasattr(g, 'vertices') and g.vertices is not None:
+                all_verts.append(g.vertices)
+
+        if not all_verts:
+            return JSONResponse({'error': '模型中没有顶点数据'}, status_code=400)
+
+        all_verts = np.vstack(all_verts)
+        bbox_min = all_verts.min(axis=0)
+        bbox_max = all_verts.max(axis=0)
+        center = (bbox_min + bbox_max) / 2.0
+        bbox_range = bbox_max - bbox_min
+
+        center_x = float(center[0])
+        center_y = float(center[1])
+        model_dx = float(bbox_range[0])
+        model_dy = float(bbox_range[1])
+
+        img_w = image_width
+        img_h = image_height
+
+        required_world_w = model_dx * (1.0 + margin)
+        required_world_h = model_dy * (1.0 + margin)
+        pixel_size_x = required_world_w / img_w
+        pixel_size_y = required_world_h / img_h
+        pixel_size = max(pixel_size_x, pixel_size_y)
+
+        world_w = pixel_size * img_w
+        world_h = pixel_size * img_h
+
+        center_px = (img_w / 2.0) - 0.5
+        center_py = (img_h / 2.0) - 0.5
+        ul_cx = center_x - center_px * pixel_size
+        ul_cy = center_y + center_py * pixel_size
+
+        return JSONResponse({
+            'model_filename': model_filename,
+            'model_center': [center_x, center_y, float(center[2])],
+            'model_range': [model_dx, model_dy, float(bbox_range[2])],
+            'image_size': [img_w, img_h],
+            'pixel_size': round(pixel_size, 10),
+            'world_coverage': [round(world_w, 2), round(world_h, 2)],
+            'pgw_lines': [
+                f'{pixel_size:.10f}',
+                '0.0',
+                '0.0',
+                f'{-pixel_size:.10f}',
+                f'{ul_cx:.10f}',
+                f'{ul_cy:.10f}',
+            ],
+            'pgw_content': (
+                f'{pixel_size:.10f}\n'
+                f'0.0\n'
+                f'0.0\n'
+                f'{-pixel_size:.10f}\n'
+                f'{ul_cx:.10f}\n'
+                f'{ul_cy:.10f}\n'
+            ),
+            'top_left_world': [round(ul_cx, 6), round(ul_cy, 6)],
+            'bottom_right_world': [round(ul_cx + world_w, 6), round(ul_cy - world_h, 6)],
+        })
+    except ImportError:
+        return JSONResponse({'error': 'trimesh 库不可用，请安装: pip install trimesh'}, status_code=500)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.get('/api/pgw/list')
+async def list_pgw_capable_models():
+    """
+    列出可用于生成 PGW 的 GLB 模型列表。
+    返回模型文件名及 XY 范围信息。
+    """
+    import numpy as np
+
+    models = []
+    if not _SCENES_DIR.exists():
+        return JSONResponse(models)
+
+    try:
+        import trimesh
+    except ImportError:
+        return JSONResponse({'error': 'trimesh 库不可用'}, status_code=500)
+
+    for glb_file in sorted(_SCENES_DIR.glob('*.glb')):
+        try:
+            scene = trimesh.load(str(glb_file))
+            if isinstance(scene, trimesh.Trimesh):
+                scene = trimesh.Scene([scene])
+            all_verts = []
+            for g in scene.geometry.values():
+                if hasattr(g, 'vertices') and g.vertices is not None:
+                    all_verts.append(g.vertices)
+            if all_verts:
+                all_verts = np.vstack(all_verts)
+                bbox_min = all_verts.min(axis=0)
+                bbox_max = all_verts.max(axis=0)
+                models.append({
+                    'filename': glb_file.name,
+                    'bbox_min': bbox_min.tolist(),
+                    'bbox_max': bbox_max.tolist(),
+                    'range': (bbox_max - bbox_min).tolist(),
+                    'center': ((bbox_min + bbox_max) / 2).tolist(),
+                })
+        except Exception:
+            pass
+
+    return JSONResponse(models)
+
+
+# =============================================================================
+# 四阶段 4.6 - 全链路性能指标
+# =============================================================================
+
+_performance_metrics: dict = {
+    'pipeline_active': False,
+    'total_collection_area_sqm': 0.0,
+    'total_collection_time_s': 0.0,
+    'collection_efficiency_ha_per_min': 0.0,
+    'fusion_pipeline_latency_s': 0.0,
+    'frames_processed': 0,
+    'pointcloud_points_input': 0,
+    'pointcloud_points_output': 0,
+    'mesh_faces_generated': 0,
+    'last_fusion_time_s': 0.0,
+    'bandwidth_usage_kbps': 0.0,
+    'qos_drops_count': 0,
+}
+
+
+@app.get('/api/performance')
+async def get_performance_metrics():
+    """
+    获取全链路性能指标。
+    
+    返回:
+        - collection_efficiency_ha_per_min: 采集效率 (公顷/分钟)
+        - collection_target: 目标 < 5 min/ha (即 > 0.2 ha/min)
+        - fusion_pipeline_latency_s: 融合管道延迟 (秒)
+        - fusion_target: 目标 < 600s (10min)
+        - bandwidth_usage_kbps: 通信带宽 (kbps)
+        - pointcloud_reduction_ratio: 点云压缩比
+    """
+    metrics = dict(_performance_metrics)
+
+    # 采集效率计算
+    total_area = metrics.get('total_collection_area_sqm', 0)
+    total_time = metrics.get('total_collection_time_s', 1)
+    if total_time > 0:
+        area_ha = total_area / 10000.0
+        time_min = total_time / 60.0
+        metrics['collection_efficiency_ha_per_min'] = round(area_ha / time_min, 4) if time_min > 0 else 0
+
+    # 点云压缩比
+    input_pts = metrics.get('pointcloud_points_input', 1)
+    output_pts = metrics.get('pointcloud_points_output', 0)
+    if input_pts > 0:
+        metrics['pointcloud_reduction_ratio'] = round(100.0 * (1 - output_pts / input_pts), 1)
+    else:
+        metrics['pointcloud_reduction_ratio'] = 0.0
+
+    # 目标指标
+    metrics['collection_target_ha_per_min'] = 0.2  # 5 min/ha → 0.2 ha/min
+    metrics['collection_target_met'] = metrics['collection_efficiency_ha_per_min'] >= 0.2
+    metrics['fusion_target_s'] = 600.0  # 10 min
+    metrics['fusion_target_met'] = metrics['fusion_pipeline_latency_s'] <= 600.0
+
+    return JSONResponse(metrics)
+
+
+@app.post('/api/performance')
+async def update_performance_metrics(data: dict):
+    """
+    更新性能指标（由 ROS2 节点或监控脚本调用）。
+    请求体可包含任意指标字段。
+    """
+    allowed_keys = {
+        'pipeline_active', 'total_collection_area_sqm', 'total_collection_time_s',
+        'fusion_pipeline_latency_s', 'frames_processed', 'pointcloud_points_input',
+        'pointcloud_points_output', 'mesh_faces_generated', 'last_fusion_time_s',
+        'bandwidth_usage_kbps', 'qos_drops_count',
+    }
+    for key, value in data.items():
+        if key in allowed_keys:
+            _performance_metrics[key] = value
+    return {'status': 'ok', 'updated': list(data.keys())}
+
+
+# =============================================================================
 # WebSocket
 # =============================================================================
 
@@ -1590,6 +1907,7 @@ async def startup_event():
         print('[启动] 仿真模式: 前端生成 (SIM_MODE=frontend)，后端仅提供 API')
     print('[启动] Web 后端服务已启动，WebSocket 端点: /ws')
     print('[启动] 二阶段功能: 航点任务 | 自主导航 | 告警推送 | 任务回放 | 模式切换 | 容错监控')
+    print('[启动] 四阶段功能: 采集进度 | PGW世界文件 | 性能指标 | 融合成果 | 任务历史')
 
 # =============================================================================
 # =============================================================================

@@ -59,6 +59,9 @@
 
         <!-- 二阶段: 回放时间轴 -->
         <TimelineControl />
+
+        <!-- 四阶段: 数据管理面板 -->
+        <DataPanel />
       </aside>
     </main>
   </div>
@@ -71,6 +74,7 @@ import StatusPanel from '@/components/StatusPanel.vue'
 import WaypointToolbar from '@/components/WaypointToolbar.vue'
 import AlertPanel from '@/components/AlertPanel.vue'
 import TimelineControl from '@/components/TimelineControl.vue'
+import DataPanel from '@/components/DataPanel.vue'
 import { useSystemStore } from '@/stores/system'
 import { FlightModeNames } from '@/types'
 

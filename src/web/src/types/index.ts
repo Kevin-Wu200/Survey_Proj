@@ -167,3 +167,72 @@ export interface SceneMetadata {
   scale?: number
   rotation?: { x: number; y: number; z: number }
 }
+
+/** 采集进度信息 */
+export interface CollectionProgress {
+  task_id: number
+  task_name: string
+  total_area_sqm: number
+  surveyed_area_sqm: number
+  progress_percent: number
+  estimated_completion_time: number
+  elapsed_seconds: number
+  uav_photos_taken: number
+  ugv_distance_m: number
+  status: string
+}
+
+/** 融合成果预览 */
+export interface FusionResult {
+  id: number
+  task_id: number
+  task_name: string
+  model_type: string
+  thumbnail_url?: string
+  coarse_rmse: number
+  fine_rmse: number
+  point_count: number
+  face_count: number
+  completed_at: string
+}
+
+/** 数据库任务记录 */
+export interface TaskRecord {
+  id: number
+  task_name: string
+  task_type: string
+  status: string
+  created_at: string
+  completed_at?: string
+  area_sqm: number
+  uav_id?: string
+  ugv_id?: string
+  fusion_result?: FusionResult
+}
+
+/** 任务列表查询参数 */
+export interface TaskQuery {
+  status?: string
+  limit?: number
+  offset?: number
+}
+
+/** 世界配准参数 */
+export interface WorldRegistration {
+  imageWidth: number
+  imageHeight: number
+  topLeftLng: number
+  topLeftLat: number
+  pixelSizeX: number
+  pixelSizeY: number
+  rotation: number
+}
+
+/** 统计概览 */
+export interface SystemStatistics {
+  total_tasks: number
+  total_area_sqm: number
+  completed_tasks: number
+  recent_tasks: TaskRecord[]
+  total_fusion_results: number
+}

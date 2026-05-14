@@ -1,0 +1,53 @@
+# 空地协同数据融合管道 - ROS2 参数配置
+# 对应节点: image_rectify_node / pointcloud_filter_node / sfm_node / icp_registration_node / meshing_node
+#
+# ROS2 参数文件格式: 每个节点名称为顶层键，参数放在 ros__parameters 下
+# 节点通过 launch 文件指定 parameters=[config_path] 加载自身命名空间下的参数
+
+image_rectify_node:
+  ros__parameters:
+    camera_matrix: [800.0, 0.0, 960.0, 0.0, 800.0, 540.0, 0.0, 0.0, 1.0]
+    distortion_coeffs: [-0.2, 0.1, 0.0, 0.0, 0.0]
+    image_width: 1920
+    image_height: 1080
+    broadcast_tf: true
+
+pointcloud_filter_node:
+  ros__parameters:
+    voxel_leaf_size: 0.05            # VoxelGrid 体素大小 (m)
+    sor_mean_k: 50                   # SOR 邻域点数量
+    sor_std_mul: 1.0                 # SOR 标准差乘数
+    sor_enabled: true                # 启用统计离群点去除
+    passthrough_enabled: true        # 启用直通滤波
+    passthrough_axis: "z"            # 直通滤波坐标轴
+    passthrough_min: 0.1             # 直通滤波最小值 (m)
+    passthrough_max: 30.0            # 直通滤波最大值 (m)
+
+sfm_node:
+  ros__parameters:
+    keyframe_distance_thresh: 5.0    # 关键帧最小距离 (m)
+    keyframe_angle_thresh: 0.2       # 关键帧最小角度变化 (rad)
+    min_inliers: 20                  # 最少三角化内点数
+    camera_matrix: [800.0, 0.0, 960.0, 0.0, 800.0, 540.0, 0.0, 0.0, 1.0]
+    image_width: 1920
+    image_height: 1080
+
+icp_registration_node:
+  ros__parameters:
+    max_iterations: 50
+    max_correspondence_distance: 0.5 # (m)
+    transformation_epsilon: 0.000001
+    initial_transform: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    source_frame: "uav_sfm_frame"
+    target_frame: "ugv_lidar_frame"
+    publish_tf: true
+
+meshing_node:
+  ros__parameters:
+    mesh_depth: 8                    # 泊松重建深度
+    mesh_scale: 1.1                  # 泊松重建尺度
+    output_dir: "./output/meshes"    # 输出目录
+    output_format: "ply"             # ply / obj / both
+    grid_resolution: 0.1             # numpy 2.5D 网格分辨率 (m)
+    normal_radius: 0.1               # 法线估计半径 (m)
+    auto_save: true                  # 自动保存网格
