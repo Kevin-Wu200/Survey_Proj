@@ -80,11 +80,11 @@ fi
 
 # 1.4 检查 Web 后端依赖
 source "$PROJECT_DIR/venv/bin/activate" 2>/dev/null || true
-if python -c "import fastapi" 2>/dev/null; then
+if python3 -c "import fastapi" 2>/dev/null; then
     record "FastAPI 依赖" "PASS" "已安装"
 else
     record "FastAPI 依赖" "WARN" "未安装，尝试安装..."
-    pip install fastapi uvicorn[standard] websockets -q 2>/dev/null
+    pip install fastapi "uvicorn[standard]" websockets -q 2>/dev/null
 fi
 
 # 1.5 检查 Web 前端依赖
@@ -135,7 +135,7 @@ cd "$PROJECT_DIR"
 
 # 4.1 检查后端语法
 source venv/bin/activate 2>/dev/null || true
-if python -c "import py_compile; py_compile.compile('src/backend/main.py', doraise=True)" 2>/dev/null; then
+if python3 -c "import py_compile; py_compile.compile('src/backend/main.py', doraise=True)" 2>/dev/null; then
     record "后端语法" "PASS" "main.py 语法正确"
 else
     record "后端语法" "FAIL" "main.py 语法错误"
@@ -225,7 +225,7 @@ source "$PROJECT_DIR/venv/bin/activate" 2>/dev/null || true
 cd "$PROJECT_DIR"
 
 # 后台启动后端
-python -m uvicorn src.backend.main:app --host 127.0.0.1 --port 8000 &
+python3 -m uvicorn src.backend.main:app --host 127.0.0.1 --port 8000 &
 BACKEND_PID=$!
 sleep 2
 
@@ -263,7 +263,7 @@ fi
 
 # 验证状态数据
 STATUS=$(curl -s http://127.0.0.1:8000/api/status)
-if echo "$STATUS" | python -c "import sys,json; d=json.load(sys.stdin); assert d['uav_status']['latitude']==30.123" 2>/dev/null; then
+if echo "$STATUS" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['uav_status']['latitude']==30.123" 2>/dev/null; then
     record "数据一致性" "PASS" "UAV 数据正确存储"
 else
     record "数据一致性" "FAIL" "数据存储异常"
@@ -281,12 +281,12 @@ echo -e "${BLUE}--- 8. 延迟估算 ---${NC}"
 echo "测试数据更新延迟..."
 source "$PROJECT_DIR/venv/bin/activate" 2>/dev/null || true
 
-python -c "
+python3 -c "
 import time, requests, statistics
 
 # 重新启动后端
 import subprocess, os
-proc = subprocess.Popen(['python', '-m', 'uvicorn', 'src.backend.main:app', '--host', '127.0.0.1', '--port', '8001'], 
+proc = subprocess.Popen(['python3', '-m', 'uvicorn', 'src.backend.main:app', '--host', '127.0.0.1', '--port', '8001'], 
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(2)
 

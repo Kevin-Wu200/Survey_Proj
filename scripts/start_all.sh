@@ -18,10 +18,20 @@ echo "=============================================="
 echo ""
 
 # 激活虚拟环境
-source "$PROJECT_DIR/venv/bin/activate"
+if [ -f "$PROJECT_DIR/venv/bin/activate" ]; then
+    source "$PROJECT_DIR/venv/bin/activate"
+else
+    echo "错误: 虚拟环境未找到，请先运行 scripts/setup_env.sh"
+    exit 1
+fi
 
 # 杀掉已有进程
+CLEANUP_DONE=0
 cleanup() {
+    if [ "$CLEANUP_DONE" -eq 1 ]; then
+        return 0
+    fi
+    CLEANUP_DONE=1
     echo "正在关闭所有服务..."
     kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
     wait 2>/dev/null || true
@@ -32,7 +42,7 @@ trap cleanup EXIT INT TERM
 # 1. 启动后端 (FastAPI + WebSocket)
 echo "[1/3] 启动后端服务 (FastAPI + WebSocket)..."
 cd "$PROJECT_DIR"
-python -m uvicorn src.backend.main:app --host 0.0.0.0 --port 8000 --reload &
+python3 -m uvicorn src.backend.main:app --host 0.0.0.0 --port 8000 --reload &
 BACKEND_PID=$!
 sleep 2
 echo "  后端服务已启动: http://localhost:8000"

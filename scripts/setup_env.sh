@@ -47,7 +47,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-if ! grep -q "CYCLONEDDS_URI" ~/.bashrc; then
+if ! grep -q "CYCLONEDDS_URI" ~/.bashrc 2>/dev/null; then
     cat >> ~/.bashrc << EOF
 
 # === 空地协同无人化智能测绘系统 ===
