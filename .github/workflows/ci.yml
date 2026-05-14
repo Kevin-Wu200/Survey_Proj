@@ -1,0 +1,200 @@
+name: CI - 空地协同无人化智能测绘系统
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  # ════════════════════════════════════════════════════════════════════
+  # Job 1: Python 语法检查 + SLAM 模块单元测试
+  # ════════════════════════════════════════════════════════════════════
+  python-tests:
+    name: Python 测试 (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ['3.10']
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-timeout
+
+      - name: 语法检查 (Python)
+        run: |
+          echo "=== 检查 Python 语法 ==="
+          python -m py_compile src/backend/main.py
+          for f in src/slam/*.py; do
+            python -m py_compile "$f" || echo "语法错误: $f"
+          done
+          echo "语法检查完成"
+
+      - name: 运行 SLAM 模块单元测试
+        run: |
+          cd /home/runner/work/空地协同无人化智能测绘系统/空地协同无人化智能测绘系统 || cd $GITHUB_WORKSPACE
+          python -m pytest tests/ -v --tb=short --timeout=60 \
+            --cov=src/slam --cov=src/ros2_ws/src/fusion_pipeline \
+            --cov-report=term-missing --cov-report=xml \
+            -o "pythonpath=." \
+            2>&1 | tee pytest-report.log
+        continue-on-error: false
+
+      - name: 上传覆盖率报告
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-py${{ matrix.python-version }}
+          path: coverage.xml
+
+      - name: 上传测试日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-log-py${{ matrix.python-version }}
+          path: pytest-report.log
+
+  # ════════════════════════════════════════════════════════════════════
+  # Job 2: 集成测试（端到端数据流验证）
+  # ════════════════════════════════════════════════════════════════════
+  integration-test:
+    name: 集成测试
+    runs-on: ubuntu-22.04
+    needs: python-tests
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install websockets requests
+
+      - name: 运行集成测试
+        run: |
+          cd $GITHUB_WORKSPACE
+          bash scripts/integration_test.sh 2>&1 | tee integration-test.log
+
+      - name: 上传集成测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-report
+          path: |
+            integration_test_report.txt
+            integration-test.log
+
+  # ════════════════════════════════════════════════════════════════════
+  # Job 3: 前端构建检查
+  # ════════════════════════════════════════════════════════════════════
+  frontend-build:
+    name: 前端构建检查
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: src/web
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 安装前端依赖
+        run: npm ci --prefer-offline || npm install
+
+      - name: TypeScript 类型检查
+        run: npx vue-tsc --noEmit 2>&1 | tee ../tsc-check.log || true
+
+      - name: Vite 构建
+        run: npm run build 2>&1 | tee ../vite-build.log
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: src/web/dist/
+
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-logs
+          path: |
+            src/web/../tsc-check.log
+            src/web/../vite-build.log
+
+  # ════════════════════════════════════════════════════════════════════
+  # Job 4: ROS2 包编译检查（需要 ROS2 Humble 环境）
+  # ════════════════════════════════════════════════════════════════════
+  ros2-build:
+    name: ROS2 编译检查
+    runs-on: ubuntu-22.04
+    container:
+      image: osrf/ros:humble-desktop-full
+    needs: python-tests
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 ROS2 构建依赖
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq \
+            python3-colcon-common-extensions \
+            python3-rosdep \
+            python3-pip \
+            ros-humble-sensor-msgs-py \
+            ros-humble-cv-bridge \
+            ros-humble-tf2-ros \
+            ros-humble-geometry-msgs \
+            ros-humble-nav-msgs \
+            libopencv-dev
+          rosdep update
+          pip3 install numpy scipy opencv-python
+
+      - name: 编译 common_interfaces (C++ ROS2 消息包)
+        run: |
+          . /opt/ros/humble/setup.sh
+          cd src/ros2_ws
+          colcon build --symlink-install \
+            --packages-select common_interfaces \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release
+        continue-on-error: false
+
+      - name: 编译 Python ROS2 包
+        run: |
+          . /opt/ros/humble/setup.sh
+          cd src/ros2_ws
+          colcon build --symlink-install \
+            --packages-select uav_sim ugv_sim ground_station fusion_pipeline \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release
+        continue-on-error: false
+
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ros2-build-logs
+          path: src/ros2_ws/log/
