@@ -24,10 +24,87 @@ export interface VehicleStatus {
   last_update: number
 }
 
+/** 航点数据 */
+export interface Waypoint {
+  lat: number
+  lon: number
+  alt: number
+  speed: number
+  heading: number
+  action: 'photo' | 'hover' | 'land'
+}
+
+/** 航点任务状态 */
+export interface MissionStatus {
+  state: number   // 0=空闲 1=上传中 2=就绪 3=执行中 4=暂停 5=完成 6=失败 7=取消
+  current_waypoint_index: number
+  total_waypoints: number
+  progress: number
+  current_waypoint_lat: number
+  current_waypoint_lon: number
+  current_waypoint_alt: number
+  photos_taken: number
+  mission_id: string
+  status_text: string
+}
+
+/** UGV 导航状态 */
+export interface NavStatus {
+  state: number
+  distance_remaining: number
+  yaw_error: number
+  path_length: number
+  current_path_index: number
+  total_path_points: number
+  status_text: string
+}
+
+/** 系统告警 */
+export interface SystemAlert {
+  id: string
+  source: string
+  level: number       // 0=info 1=warning 2=error 3=critical
+  message: string
+  timestamp: number
+}
+
+/** 回放会话信息 */
+export interface ReplaySession {
+  session_id: string
+  filename: string
+  start_time: number
+  end_time: number
+  duration: number
+  total_frames: number
+  has_images: boolean
+  has_pointcloud: boolean
+}
+
+/** 回放帧 */
+export interface ReplayFrame {
+  timestamp: number
+  uav_lat: number
+  uav_lon: number
+  uav_alt: number
+  uav_heading: number
+  ugv_lat: number
+  ugv_lon: number
+  ugv_heading: number
+}
+
+/** 回放状态 */
+export interface ReplayState {
+  session: ReplaySession | null
+  current_index: number
+  total_frames: number
+  playing: boolean
+  speed: number
+}
+
 /** WebSocket 消息 */
 export interface WSMessage {
-  type: 'init' | 'state_update' | 'status_update' | 'pong'
-  data: SystemState
+  type: 'init' | 'state_update' | 'status_update' | 'pong' | 'alert'
+  data: SystemState | SystemAlert
   timestamp?: number
 }
 
@@ -39,6 +116,12 @@ export interface SystemState {
   ugv_status: VehicleStatus
   clients_count: number
   server_time: number
+  // 二阶段新增
+  system_mode: number
+  system_mode_name: string
+  uav_mission_status: MissionStatus
+  ugv_nav_status: NavStatus
+  replay: ReplayState
 }
 
 /** 飞行模式映射 */
@@ -49,4 +132,20 @@ export const FlightModeNames: Record<number, string> = {
   3: '航线',
   4: '降落',
   5: '返航',
+}
+
+/** 任务状态映射 */
+export const MissionStateNames: Record<number, string> = {
+  0: '空闲', 1: '上传中', 2: '就绪', 3: '执行中',
+  4: '暂停', 5: '完成', 6: '失败', 7: '取消',
+}
+
+/** 导航状态映射 */
+export const NavStateNames: Record<number, string> = {
+  0: '空闲', 1: '规划中', 2: '执行中', 3: '到达目标', 4: '失败', 5: '取消',
+}
+
+/** 告警级别映射 */
+export const AlertLevelNames: Record<number, string> = {
+  0: '信息', 1: '警告', 2: '错误', 3: '严重',
 }

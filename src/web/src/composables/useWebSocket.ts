@@ -1,12 +1,14 @@
 import { ref, onUnmounted } from 'vue'
-import type { SystemState, WSMessage } from '@/types'
+import type { SystemState, SystemAlert, WSMessage } from '@/types'
 
-/** WebSocket 连接管理 composable */
+/** WebSocket 连接管理 composable — 二阶段增强版 */
 export function useWebSocket(url: string) {
   const connected = ref(false)
   const systemState = ref<SystemState | null>(null)
+  const alerts = ref<SystemAlert[]>([])
   const error = ref<string | null>(null)
   const reconnectDelay = 3000
+  const maxAlerts = 50
 
   let ws: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -34,7 +36,11 @@ export function useWebSocket(url: string) {
       try {
         const msg: WSMessage = JSON.parse(event.data)
         if (msg.type === 'init' || msg.type === 'state_update') {
-          systemState.value = msg.data
+          systemState.value = msg.data as SystemState
+        } else if (msg.type === 'alert') {
+          // 告警推送
+          const alert = msg.data as SystemAlert
+          alerts.value = [...alerts.value, alert].slice(-maxAlerts)
         }
       } catch (e) {
         console.error('[WS] 消息解析失败:', e)
@@ -62,10 +68,14 @@ export function useWebSocket(url: string) {
     }, reconnectDelay)
   }
 
-  function sendPing() {
+  function send(message: object) {
     if (ws && connected.value) {
-      ws.send(JSON.stringify({ type: 'ping' }))
+      ws.send(JSON.stringify(message))
     }
+  }
+
+  function sendPing() {
+    send({ type: 'ping' })
   }
 
   function disconnect() {
@@ -93,7 +103,9 @@ export function useWebSocket(url: string) {
   return {
     connected,
     systemState,
+    alerts,
     error,
+    send,
     sendPing,
     reconnect: connect,
   }

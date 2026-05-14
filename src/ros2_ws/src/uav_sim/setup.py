@@ -31,6 +31,7 @@ setup(
         'console_scripts': [
             'uav_controller = uav_sim.uav_controller:main',
             'uav_camera_sim = uav_sim.uav_camera_sim:main',
+            'uav_mission_controller = uav_sim.uav_mission_controller:main',
         ],
     },
 )

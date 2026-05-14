@@ -31,6 +31,7 @@ setup(
         'console_scripts': [
             'ugv_controller = ugv_sim.ugv_controller:main',
             'ugv_sensor_pub = ugv_sim.ugv_sensor_pub:main',
+            'ugv_nav_controller = ugv_sim.ugv_nav_controller:main',
         ],
     },
 )

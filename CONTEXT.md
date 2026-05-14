@@ -54,10 +54,11 @@
 
 - **仿真**: ROS2 Humble + Gazebo Garden
 - **通信**: CycloneDDS (RMW_IMPLEMENTATION)
-- **后端**: Python FastAPI + WebSocket + uvicorn
+- **后端**: Python FastAPI + WebSocket + uvicorn (v0.2.0)
 - **前端**: Vue 3 + TypeScript + Pinia + 高德地图 JS API v2.0
 - **构建**: colcon (ROS2) + Vite (前端)
 - **数据存储**: ros2 bag (SQLite3) + 本地 SSD 缓存
+- **自主导航**: Nav2 + Cartographer 2D SLAM (仿真模式)
 
 ## 环境配置
 

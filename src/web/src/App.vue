@@ -6,6 +6,9 @@
         <img src="/logo.svg" alt="logo" class="logo" />
         <span>空地协同无人化智能测绘系统</span>
       </div>
+      <div class="mode-indicator" :class="store.systemMode === 0 ? 'sim' : 'real'">
+        {{ store.systemModeName }}
+      </div>
       <div class="connection-status">
         <span :class="['dot', store.connected ? 'online' : 'offline']"></span>
         {{ store.connected ? '已连接地面站' : '地面站离线' }}
@@ -18,7 +21,7 @@
     <!-- 主内容区 -->
     <main class="main-content">
       <!-- 地图区域 -->
-      <MapView class="map-area" />
+      <MapView class="map-area" ref="mapViewRef" />
 
       <!-- 侧边栏 -->
       <aside class="sidebar">
@@ -47,6 +50,15 @@
           :battery="ugvStatus?.battery ?? 100"
           :battery-v="ugvStatus?.battery_voltage ?? 0"
         />
+
+        <!-- 二阶段: 航线工具栏 -->
+        <WaypointToolbar ref="waypointToolbarRef" />
+
+        <!-- 二阶段: 告警面板 -->
+        <AlertPanel :alerts="store.alerts" />
+
+        <!-- 二阶段: 回放时间轴 -->
+        <TimelineControl />
       </aside>
     </main>
   </div>
@@ -56,10 +68,15 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import MapView from '@/views/MapView.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import WaypointToolbar from '@/components/WaypointToolbar.vue'
+import AlertPanel from '@/components/AlertPanel.vue'
+import TimelineControl from '@/components/TimelineControl.vue'
 import { useSystemStore } from '@/stores/system'
 import { FlightModeNames } from '@/types'
 
 const store = useSystemStore()
+const mapViewRef = ref<InstanceType<typeof MapView> | null>(null)
+const waypointToolbarRef = ref<InstanceType<typeof WaypointToolbar> | null>(null)
 
 const uavPos = computed(() => store.uavPosition)
 const uavStatus = computed(() => store.uavStatus)
@@ -138,6 +155,26 @@ body {
   height: 28px;
 }
 
+.mode-indicator {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  margin-right: 12px;
+  font-weight: 500;
+}
+
+.mode-indicator.sim {
+  background: rgba(33, 150, 243, 0.2);
+  border: 1px solid rgba(33, 150, 243, 0.4);
+  color: #64b5f6;
+}
+
+.mode-indicator.real {
+  background: rgba(76, 175, 80, 0.2);
+  border: 1px solid rgba(76, 175, 80, 0.4);
+  color: #81c784;
+}
+
 .connection-status {
   display: flex;
   align-items: center;
@@ -181,13 +218,13 @@ body {
 }
 
 .sidebar {
-  width: 260px;
+  width: 280px;
   background: rgba(15, 20, 35, 0.9);
   border-left: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px;
   overflow-y: auto;
   backdrop-filter: blur(10px);
 }

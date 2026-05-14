@@ -17,6 +17,10 @@ set(msg_files
   "msg/UGVStatus.msg"
   "msg/Heartbeat.msg"
   "msg/SystemAlert.msg"
+  "msg/WaypointMission.msg"
+  "msg/WaypointMissionStatus.msg"
+  "msg/NavigationGoal.msg"
+  "msg/NavigationStatus.msg"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
