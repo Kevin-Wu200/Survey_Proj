@@ -12,7 +12,7 @@
 | UGV | 无人车（Unmanned Ground Vehicle），使用四轮差速底盘模型 |
 | 地面站 | Ground Station，负责数据汇聚、存储、处理和 Web 服务 |
 | DDS | Data Distribution Service，ROS2 底层通信中间件 |
-| 天地图 | Tianditu，国家地理信息公共服务平台，提供地图 JS API |
+| 高德地图 | AMap，高德软件有限公司，提供地图 JS API |
 | ros2 bag | ROS2 数据录制工具，用于存储传感器数据包 |
 
 ## 系统架构
@@ -44,7 +44,7 @@
                   │
        ┌──────────▼───────────────┐
        │    Web 前端 (Vue3)        │
-       │  - 天地图地图展示          │
+       │  - 高德地图地图展示          │
        │  - UAV/UGV 实时标绘       │
        │  - 状态面板               │
        └──────────────────────────┘
@@ -55,7 +55,7 @@
 - **仿真**: ROS2 Humble + Gazebo Garden
 - **通信**: CycloneDDS (RMW_IMPLEMENTATION)
 - **后端**: Python FastAPI + WebSocket + uvicorn
-- **前端**: Vue 3 + TypeScript + Pinia + 天地图 JS API v4
+- **前端**: Vue 3 + TypeScript + Pinia + 高德地图 JS API v2.0
 - **构建**: colcon (ROS2) + Vite (前端)
 - **数据存储**: ros2 bag (SQLite3) + 本地 SSD 缓存
 

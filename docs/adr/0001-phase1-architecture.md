@@ -31,12 +31,12 @@
 - **SSD 缓存目录结构**: `~/airunway_cache/{bags,images,lidar,telemetry,logs}`
 
 ### 5. Web 监测方案
-- **决策**: FastAPI + WebSocket 后端 + Vue3 + 天地图前端
+- **决策**: FastAPI + WebSocket 后端 + Vue3 + 高德地图前端
 - **理由**:
   - FastAPI: 原生支持 WebSocket，异步高性能
   - Vue3: Composition API + TypeScript 类型安全
-  - 天地图: 国内合规地图服务，免费 API Key
-- **替代方案**: Cesium（三维地球，资源消耗大）、Leaflet（需要自行配置瓦片源）
+  - 高德地图: 国内合规地图服务，卫星影像 + 路网注记图层完整支持
+- **替代方案**: Cesium（三维地球，资源消耗大）、Leaflet（需要自行配置瓦片源）、天地图（已替换为高德）
 
 ### 6. 数据桥接
 - **决策**: ROS2 → HTTP REST → FastAPI → WebSocket → 前端

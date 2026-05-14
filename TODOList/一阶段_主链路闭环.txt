@@ -7,7 +7,7 @@
 预计工期：第1~2周
 依赖：无（P1 需求分析与方案设计已完成）
 
-天地图Web API KEY = 66773e61397afa9c511d62fc259f3e70
+高德地图Web API KEY = ec3c83bc6fe8bda849667b663cc49e6a
 
 --------------------------------------------------------------------
 □ 1.1 ROS2 通信基础环境搭建
@@ -38,12 +38,12 @@
     输出：可录制并回放 UAV/UGV 运行过程的数据包
 
 □ 1.5 Web 端远程监测最小原型
-    - 搭建 Vue3 + TypeScript + 天地图 JS API v4 前端骨架
+    - 搭建 Vue3 + TypeScript + 高德地图 JS API v2.0 前端骨架
       （npm create vue@latest 脚手架初始化）
     - 后端搭建（Python FastAPI + WebSocket，uvicorn 直接启动）
     - 前端启动方式：npm run dev（Vite 开发服务器）
     - 实现：
-      □ UAV/UGV 实时位置在天地图上标绘（经纬度坐标）
+      □ UAV/UGV 实时位置在高德地图上标绘（经纬度坐标）
       □ 无人机/无人车基本状态显示（连接状态、经纬度）
       □ 实时位姿数据通过 WebSocket 推送至前端
     输出：Web 页面可看到 UAV/UGV 图标在地图上移动

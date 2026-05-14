@@ -1,6 +1,6 @@
 <template>
   <div class="map-container">
-    <div id="tianditu-map" class="map-canvas"></div>
+    <div id="amap-container" class="map-canvas"></div>
 
     <!-- 地图信息叠加 -->
     <div class="map-overlay top-left">
@@ -69,12 +69,12 @@ const delayClass = computed(() => {
   return 'danger'
 })
 
-// 天地图 API 密钥
-const TIANDITU_KEY = '66773e61397afa9c511d62fc259f3e70'
+// 高德地图 API 密钥
+const AMAP_KEY = 'ec3c83bc6fe8bda849667b663cc49e6a'
 
 onMounted(() => {
-  // 等待天地图 API 加载完成后再初始化地图
-  waitForTianditu()
+  // 等待高德地图 API 加载完成后再初始化地图
+  waitForAMap()
 })
 
 onUnmounted(() => {
@@ -85,20 +85,20 @@ onUnmounted(() => {
 })
 
 /**
- * 等待天地图 API 加载完成，带超时和重试机制
+ * 等待高德地图 API 加载完成，带超时和重试机制
  */
-function waitForTianditu(retries = 30, interval = 200): void {
-  // 检查 T 全局对象是否已加载
-  if (typeof T !== 'undefined' && T.Map && T.TileLayer) {
-    console.log('[Map] 天地图 API 已就绪，开始初始化地图')
+function waitForAMap(retries = 30, interval = 200): void {
+  // 检查 AMap 全局对象是否已加载
+  if (typeof AMap !== 'undefined' && AMap.Map && AMap.TileLayer) {
+    console.log('[Map] 高德地图 API 已就绪，开始初始化地图')
     initMap()
     return
   }
 
   if (retries <= 0) {
-    console.error('[Map] 天地图 API 加载超时，请检查网络连接或 API Key 是否有效')
+    console.error('[Map] 高德地图 API 加载超时，请检查网络连接或 API Key 是否有效')
     // 显示错误提示
-    const container = document.getElementById('tianditu-map')
+    const container = document.getElementById('amap-container')
     if (container) {
       container.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#f44336;font-size:16px;flex-direction:column;gap:12px;">
@@ -110,100 +110,95 @@ function waitForTianditu(retries = 30, interval = 200): void {
     return
   }
 
-  console.log(`[Map] 等待天地图 API 就绪... (剩余重试 ${retries} 次)`)
-  setTimeout(() => waitForTianditu(retries - 1, interval), interval)
+  console.log(`[Map] 等待高德地图 API 就绪... (剩余重试 ${retries} 次)`)
+  setTimeout(() => waitForAMap(retries - 1, interval), interval)
 }
 
 function initMap() {
-  const container = document.getElementById('tianditu-map')
+  const container = document.getElementById('amap-container')
   if (!container) return
 
-  // 创建天地图实例
-  map = new T.Map('tianditu-map', {
-    projection: 'EPSG:4326',    // WGS84 经纬度投影
-    center: new T.LngLat(120.0, 30.0),
+  // 创建高德地图实例（默认 GCJ-02 坐标系，内置缩放控件）
+  map = new AMap.Map('amap-container', {
+    center: [120.0, 30.0],
     zoom: 16,
+    layers: [
+      new AMap.TileLayer.Satellite(),   // 卫星影像图层
+      new AMap.TileLayer.RoadNet(),     // 路网注记图层
+    ],
   })
-
-  // 添加卫星影像图层
-  const sateLayer = new T.TileLayer(
-    `https://t0.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU_KEY}`
-  )
-  map.addLayer(sateLayer)
-
-  // 添加注记图层 (可半透明叠加)
-  const cvaLayer = new T.TileLayer(
-    `https://t0.tianditu.gov.cn/cva_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU_KEY}`
-  )
-  map.addLayer(cvaLayer)
-
-  // 添加缩放控件
-  const zoomControl = new T.Control.Zoom()
-  map.addControl(zoomControl)
 
   // 创建 UAV 标记 (三角形图标)
-  uavMarker = new T.Marker(new T.LngLat(120.0, 30.0), {
-    icon: new T.Icon({
-      iconUrl: createUAVIcon('#00bcd4'),
-      iconSize: new T.Point(32, 32),
-      iconAnchor: new T.Point(16, 16),
+  uavMarker = new AMap.Marker({
+    position: [120.0, 30.0],
+    icon: new AMap.Icon({
+      image: createUAVIcon('#00bcd4'),
+      size: new AMap.Size(32, 32),
+      imageSize: new AMap.Size(32, 32),
     }),
+    offset: new AMap.Pixel(-16, -16),
+    zIndex: 100,
   })
-  map.addOverlay(uavMarker)
+  map.add(uavMarker)
 
   // UAV 标签
-  uavLabel = new T.Label({
+  uavLabel = new AMap.Text({
     text: 'UAV',
-    position: new T.LngLat(120.0, 30.0005),
-    offset: new T.Point(-12, -20),
+    position: [120.0, 30.0005],
+    anchor: 'center',
+    offset: new AMap.Pixel(0, -20),
+    style: {
+      color: '#00bcd4',
+      fontSize: '12px',
+      fontWeight: 'bold',
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      padding: '2px 6px',
+      borderRadius: '3px',
+      border: '1px solid #00bcd4',
+    },
   })
-  uavLabel.setStyle({
-    color: '#00bcd4',
-    fontSize: 12,
-    fontWeight: 'bold',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    padding: '2px 6px',
-    borderRadius: '3px',
-    border: '1px solid #00bcd4',
-  })
-  map.addOverlay(uavLabel)
+  map.add(uavLabel)
 
   // 创建 UGV 标记 (方形图标)
-  ugvMarker = new T.Marker(new T.LngLat(120.0, 30.0), {
-    icon: new T.Icon({
-      iconUrl: createUGVIcon('#ff9800'),
-      iconSize: new T.Point(28, 28),
-      iconAnchor: new T.Point(14, 14),
+  ugvMarker = new AMap.Marker({
+    position: [120.0, 30.0],
+    icon: new AMap.Icon({
+      image: createUGVIcon('#ff9800'),
+      size: new AMap.Size(28, 28),
+      imageSize: new AMap.Size(28, 28),
     }),
+    offset: new AMap.Pixel(-14, -14),
+    zIndex: 100,
   })
-  map.addOverlay(ugvMarker)
+  map.add(ugvMarker)
 
   // UGV 标签
-  ugvLabel = new T.Label({
+  ugvLabel = new AMap.Text({
     text: 'UGV',
-    position: new T.LngLat(120.0, 30.0005),
-    offset: new T.Point(-12, -20),
+    position: [120.0, 30.0005],
+    anchor: 'center',
+    offset: new AMap.Pixel(0, -20),
+    style: {
+      color: '#ff9800',
+      fontSize: '12px',
+      fontWeight: 'bold',
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      padding: '2px 6px',
+      borderRadius: '3px',
+      border: '1px solid #ff9800',
+    },
   })
-  ugvLabel.setStyle({
-    color: '#ff9800',
-    fontSize: 12,
-    fontWeight: 'bold',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    padding: '2px 6px',
-    borderRadius: '3px',
-    border: '1px solid #ff9800',
-  })
-  map.addOverlay(ugvLabel)
+  map.add(ugvLabel)
 
   // 监听地图事件
-  map.addEventListener('moveend', () => {
+  map.on('moveend', () => {
     const center = map.getCenter()
     centerLng.value = center.lng
     centerLat.value = center.lat
     zoomLevel.value = map.getZoom()
   })
 
-  console.log('[Map] 天地图初始化完成')
+  console.log('[Map] 高德地图初始化完成')
 }
 
 // 生成 UAV 图标 (三角形 SVG data URL)
@@ -229,14 +224,14 @@ watch(
   () => store.uavPosition,
   (pos) => {
     if (!pos || !map) return
-    const lngLat = new T.LngLat(pos.longitude, pos.latitude)
+    const lngLat: [number, number] = [pos.longitude, pos.latitude]
 
     // 更新标记位置
-    uavMarker?.setLngLat(lngLat)
-    uavLabel?.setPosition(new T.LngLat(pos.longitude, pos.latitude + 0.0005))
+    uavMarker?.setPosition(lngLat)
+    uavLabel?.setPosition([pos.longitude, pos.latitude + 0.0005])
 
     // 更新标签内容
-    uavLabel?.setLabel(
+    uavLabel?.setText(
       `UAV ${pos.altitude.toFixed(0)}m ${pos.speed.toFixed(1)}m/s`
     )
 
@@ -264,11 +259,11 @@ watch(
   () => store.ugvPosition,
   (pos) => {
     if (!pos || !map) return
-    const lngLat = new T.LngLat(pos.longitude, pos.latitude)
+    const lngLat: [number, number] = [pos.longitude, pos.latitude]
 
-    ugvMarker?.setLngLat(lngLat)
-    ugvLabel?.setPosition(new T.LngLat(pos.longitude, pos.latitude + 0.0005))
-    ugvLabel?.setLabel(
+    ugvMarker?.setPosition(lngLat)
+    ugvLabel?.setPosition([pos.longitude, pos.latitude + 0.0005])
+    ugvLabel?.setText(
       `UGV ${pos.speed.toFixed(1)}m/s`
     )
 
@@ -288,17 +283,19 @@ function updateUAVTrack() {
   if (!map || uavTrackPoints.length < 2) return
 
   if (uavHistory) {
-    map.removeOverlay(uavHistory)
+    map.remove(uavHistory)
   }
 
-  const points = uavTrackPoints.map(p => new T.LngLat(p.lng, p.lat))
-  uavHistory = new T.Polyline(points, {
-    color: '#00bcd4',
-    weight: 2,
-    opacity: 0.6,
-    lineStyle: 'dashed',
+  const points: [number, number][] = uavTrackPoints.map(p => [p.lng, p.lat])
+  uavHistory = new AMap.Polyline({
+    path: points,
+    strokeColor: '#00bcd4',
+    strokeWeight: 2,
+    strokeOpacity: 0.6,
+    strokeStyle: 'dashed',
+    zIndex: 50,
   })
-  map.addOverlay(uavHistory)
+  map.add(uavHistory)
 }
 
 // 更新 UGV 轨迹线
@@ -306,17 +303,19 @@ function updateUGVTrack() {
   if (!map || ugvTrackPoints.length < 2) return
 
   if (ugvHistory) {
-    map.removeOverlay(ugvHistory)
+    map.remove(ugvHistory)
   }
 
-  const points = ugvTrackPoints.map(p => new T.LngLat(p.lng, p.lat))
-  ugvHistory = new T.Polyline(points, {
-    color: '#ff9800',
-    weight: 2,
-    opacity: 0.6,
-    lineStyle: 'dashed',
+  const points: [number, number][] = ugvTrackPoints.map(p => [p.lng, p.lat])
+  ugvHistory = new AMap.Polyline({
+    path: points,
+    strokeColor: '#ff9800',
+    strokeWeight: 2,
+    strokeOpacity: 0.6,
+    strokeStyle: 'dashed',
+    zIndex: 50,
   })
-  map.addOverlay(ugvHistory)
+  map.add(ugvHistory)
 }
 </script>
 

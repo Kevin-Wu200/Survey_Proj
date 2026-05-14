@@ -6,5 +6,5 @@ declare module '*.vue' {
   export default component
 }
 
-// 天地图全局变量声明
-declare const T: any
+// 高德地图全局变量声明
+declare const AMap: any
