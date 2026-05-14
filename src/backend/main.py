@@ -68,6 +68,8 @@ BACKEND_HOST = os.environ.get('BACKEND_HOST', _env_config.get('BACKEND_HOST', '0
 BACKEND_PORT = int(os.environ.get('BACKEND_PORT', _env_config.get('BACKEND_PORT', '8000')))
 CENTER_LAT = float(os.environ.get('CENTER_LAT', _env_config.get('CENTER_LAT', '30.0')))
 CENTER_LNG = float(os.environ.get('CENTER_LNG', _env_config.get('CENTER_LNG', '120.0')))
+# 仿真模式：设为 "frontend" 则后端不生成模拟数据（前端 Three.js 自行仿真）
+SIM_MODE = os.environ.get('SIM_MODE', _env_config.get('SIM_MODE', 'backend')).lower()
 
 # =============================================================================
 # 数据模型
@@ -398,7 +400,8 @@ app.add_middleware(
 async def root():
     return {'service': 'AirRunway Ground Station', 'version': '0.2.0',
             'features': ['waypoint_mission', 'autonomous_nav', 'task_replay',
-                         'sim_real_switch', 'fault_tolerance']}
+                         'sim_real_switch', 'fault_tolerance', '3d_scene_support'],
+            'sim_mode': SIM_MODE}
 
 @app.get('/api/status')
 async def get_status():
@@ -1178,7 +1181,11 @@ async def startup_event():
     asyncio.create_task(fault_monitor_loop())
     asyncio.create_task(replay_playback_loop())
     asyncio.create_task(alert_broadcast_loop())
-    asyncio.create_task(mock_data_generator())
+    if SIM_MODE != 'frontend':
+        asyncio.create_task(mock_data_generator())
+        print('[启动] 仿真模式: 后端生成 (SIM_MODE=backend)')
+    else:
+        print('[启动] 仿真模式: 前端生成 (SIM_MODE=frontend)，后端仅提供 API')
     print('[启动] Web 后端服务已启动，WebSocket 端点: /ws')
     print('[启动] 二阶段功能: 航点任务 | 自主导航 | 告警推送 | 任务回放 | 模式切换 | 容错监控')
 

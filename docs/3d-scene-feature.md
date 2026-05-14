@@ -2,13 +2,28 @@
 
 ## 概述
 
-在 MapView.vue 中新增 GLB 三维场景支持，用户可通过顶部工具栏在 2D 高德地图与 3D 场景之间切换，并通过下拉列表选择不同的已导入场景模型。
+系统采用**纯 3D 场景模式**运行，使用 Three.js 渲染 GLB 三维地形模型。仿真引擎已从前端接管（替代后端 `mock_data_generator`），UAV 和 UGV 在 3D 地形上进行仿真运动。
 
 ## 架构设计
 
-### 双模式切换方案
+### 纯 3D 前端仿真架构
 
-系统同时保留 AMap（高德地图 2D）和 Three.js（GLB 3D）两种渲染引擎：
+```
+用户选择场景 → GET /api/scenes → 返回 GLB 文件列表
+→ 选中场景 → GET /api/scenes/{filename}
+→ Three.js GLTFLoader 加载 → 渲染到 Canvas
+→ terrainQuery 注册地形 mesh → 启动前端仿真
+
+前端仿真循环 (useSimulation.ts):
+  UAV: GPS椭圆航线 + 用户输入高度 → watch → 更新3D Sprite
+  UGV: GPS坐标 → 世界坐标 → Raycaster查询地形高度 → 坡度检测 → watch → 更新3D Sprite
+```
+
+### 后端职责
+
+后端仅提供场景文件服务（`/api/scenes` 端点），仿真完全由前端 Three.js 驱动。
+
+- 仿真模式可通过环境变量 `SIM_MODE=frontend` 切换（禁用后端 mock_data_generator）
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -25,14 +40,28 @@
 ### 数据流
 
 ```
-用户选择场景 → GET /api/scenes → 返回 GLB 文件列表
-→ 前端下拉渲染 → 选中场景 → GET /api/scenes/{filename}
-→ Three.js GLTFLoader 加载 → 渲染到 Canvas
+选择场景 → loadModel → terrainQuery.setTerrainObjects(model)
+         → simulation.setGeoOrigin → simulation.start()
 
-UAV/UGV 位置数据 → WebSocket → Pinia Store → watch()
-→ AMap: 更新 Marker 位置
-→ GLB: 更新 3D Sprite 标记 + 轨迹线
+仿真循环 (requestAnimationFrame, ~60fps):
+  stepUAV(): GPS椭圆航线 → 更新 uavState
+  stepUGV(): GPS坐标 → 世界坐标
+    → terrainQuery.getHeightAt(x, z) → 获取地形高度
+    → terrainQuery.getSlopeAt(x, z) → 坡度检测
+    → 陡坡(>30°)则减速阻塞，尝试等高线绕行
+    → 正常则贴地移动 → 更新 ugvState
+
+watch(uavState) → threeMarkers.updateUAV() → 更新 Sprite + 轨迹
+watch(ugvState) → threeMarkers.updateUGV() → 更新 Sprite + 轨迹
 ```
+
+### UGV 物理约束
+
+- **最大爬坡角度**：30°
+- **坡度检测**：5 点采样拟合法线（中心 + 前后左右 0.5m）
+- **陡坡阻塞**：坡度 > 30° 时减速到 0，状态标记为"陡坡阻塞"
+- **等高线绕行**：阻塞 > 2 秒后，沿等高线方向（垂直于法线的水平分量）小幅试探移动
+- **双方向尝试**：来回切换绕行方向以找到可行路径
 
 ## 文件变更清单
 
@@ -41,10 +70,12 @@ UAV/UGV 位置数据 → WebSocket → Pinia Store → watch()
 | 新增 | `3D_Model/` | GLB 模型存储目录 |
 | 新增 | `src/web/src/composables/useThreeScene.ts` | Three.js 场景管理 |
 | 新增 | `src/web/src/composables/use3DMarkers.ts` | 3D 标记管理 |
+| 新增 | `src/web/src/composables/useTerrainQuery.ts` | 地形高度与坡度查询 |
+| 新增 | `src/web/src/composables/useSimulation.ts` | 前端仿真引擎 |
 | 新增 | `docs/3d-scene-feature.md` | 本文档 |
-| 修改 | `src/web/src/views/MapView.vue` | 双模式切换 + 下拉列表 |
+| 修改 | `src/web/src/views/MapView.vue` | 纯3D模式（已移除AMap） |
 | 修改 | `src/web/package.json` | 添加 three 依赖 |
-| 修改 | `src/backend/main.py` | 新增 /api/scenes 端点 |
+| 修改 | `src/backend/main.py` | 新增 /api/scenes 端点 + SIM_MODE 控制 |
 | 修改 | `.gitignore` | 添加 3D_Model GLB 规则 |
 | 修改 | `src/web/src/types/index.ts` | 新增 SceneInfo/SceneMetadata 类型 |
 
@@ -154,14 +185,23 @@ UAV/UGV 位置数据 → WebSocket → Pinia Store → watch()
 
 ### 操作指南
 
-1. 点击顶部工具栏 **🌐 3D 场景** 切换到三维视图
-2. 从下拉列表选择场景模型
-3. 鼠标操作：
+1. 页面加载后自动初始化 3D 场景
+2. 从顶部工具栏下拉列表选择场景模型
+3. 场景加载后仿真自动开始
+4. 鼠标操作：
    - **左键拖拽**：旋转视角
    - **滚轮**：缩放
    - **右键拖拽**：平移
-4. UAV/UGV 标记会实时更新位置
-5. 点击 **🗺️ 2D 地图** 返回高德地图视图
+5. UAV 按椭圆航线飞行，高度可调整
+6. UGV 贴地形运行，陡坡自动阻塞绕行
+7. 开启 WaypointToolbar 绘制模式可在 3D 场景中点击添加航点
+
+### 仿真控制说明
+
+- 工具栏显示仿真运行状态（▶ 运行中 / ⏸ 已暂停）
+- 左上角显示 UAV 当前高度和目标高度
+- 右下角显示 UGV 当前坡度角度
+- UGV 阻塞时右上角显示红色警告
 
 ## 技术栈
 

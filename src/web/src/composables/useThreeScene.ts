@@ -29,9 +29,10 @@ export interface ThreeSceneInstance {
   controls: Ref<OrbitControls | null>
   renderer: Ref<WebGLRenderer | null>
   initScene: (containerId: string) => void
-  loadModel: (url: string) => Promise<void>
+  loadModel: (url: string) => Promise<Object3D | null>
   destroyScene: () => void
   resize: () => void
+  getCurrentModel: () => Object3D | null
 }
 
 export function useThreeScene(): ThreeSceneInstance {
@@ -173,8 +174,9 @@ export function useThreeScene(): ThreeSceneInstance {
 
   /**
    * 加载 GLB 模型
+   * @returns 加载的模型根节点
    */
-  function loadModel(url: string): Promise<void> {
+  function loadModel(url: string): Promise<Object3D | null> {
     return new Promise((resolve, reject) => {
       if (!scene.value) {
         reject(new Error('场景未初始化，请先调用 initScene()'))
@@ -213,7 +215,7 @@ export function useThreeScene(): ThreeSceneInstance {
           }
 
           console.log(`[ThreeScene] GLB 模型加载完成: ${url}`)
-          resolve()
+          resolve(_currentModel)
         },
         (progress) => {
           if (progress.total > 0) {
@@ -227,6 +229,13 @@ export function useThreeScene(): ThreeSceneInstance {
         },
       )
     })
+  }
+
+  /**
+   * 获取当前加载的模型根节点
+   */
+  function getCurrentModel(): Object3D | null {
+    return _currentModel
   }
 
   /**
@@ -311,5 +320,6 @@ export function useThreeScene(): ThreeSceneInstance {
     loadModel,
     destroyScene,
     resize,
+    getCurrentModel,
   }
 }
