@@ -69,8 +69,9 @@ const delayClass = computed(() => {
   return 'danger'
 })
 
-// 高德地图 API 密钥
-const AMAP_KEY = 'ec3c83bc6fe8bda849667b663cc49e6a'
+// 高德地图 API 密钥 (由 Vite 插件从 env.txt 注入)
+declare const __AMAP_KEY__: string
+const AMAP_KEY: string = typeof __AMAP_KEY__ !== 'undefined' ? __AMAP_KEY__ : ''
 
 onMounted(() => {
   // 等待高德地图 API 加载完成后再初始化地图

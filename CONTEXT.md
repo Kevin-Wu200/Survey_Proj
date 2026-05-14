@@ -59,6 +59,42 @@
 - **构建**: colcon (ROS2) + Vite (前端)
 - **数据存储**: ros2 bag (SQLite3) + 本地 SSD 缓存
 
+## 环境配置
+
+系统通过项目根目录 `env.txt` 统一管理环境配置：
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `AMAP_KEY` | 高德地图 JS API 密钥 | (必填) |
+| `FRONTEND_HOST` | 前端 Vite 服务器监听地址 | `0.0.0.0` |
+| `FRONTEND_PORT` | 前端端口 | `3000` |
+| `BACKEND_HOST` | 后端 FastAPI 监听地址 | `0.0.0.0` |
+| `BACKEND_PORT` | 后端端口 | `8000` |
+| `CENTER_LAT` | 地图默认中心纬度 | `30.0` |
+| `CENTER_LNG` | 地图默认中心经度 | `120.0` |
+
+**初始化配置**:
+```bash
+cp env.txt.example env.txt
+# 编辑 env.txt，填入你的 AMAP_KEY
+```
+
+配置优先级: 环境变量 > env.txt > 默认值
+
+## 局域网访问
+
+服务默认监听 `0.0.0.0`，局域网内其他设备可通过以下地址访问：
+
+```
+http://{服务器IP}:3000/
+```
+
+**防火墙设置** (如有需要):
+```bash
+sudo ufw allow 3000/tcp
+sudo ufw allow 8000/tcp
+```
+
 ## 开发环境
 
 - 操作系统: Ubuntu 22.04 LTS (ROS2 运行时) / macOS (Web 服务开发)

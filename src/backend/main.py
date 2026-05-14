@@ -3,13 +3,17 @@
 空地协同无人化智能测绘系统 - Web 后端服务
 FastAPI + WebSocket + ROS2 数据桥接
 
+配置: 环境变量 BACKEND_HOST / BACKEND_PORT，或从项目根目录 env.txt 读取
 启动方式: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 """
 
 import asyncio
 import json
+import os
+import sys
 import time
 import threading
+from pathlib import Path
 from typing import Dict, Set, Optional
 from dataclasses import dataclass, field, asdict
 
@@ -17,6 +21,40 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
+
+
+# =============================================================================
+# 环境配置加载 (env.txt)
+# =============================================================================
+
+def _load_env_txt() -> dict:
+    """从项目根目录 env.txt 加载配置，返回 dict"""
+    config: dict = {}
+
+    # 查找项目根目录 (向上找到包含 env.txt 的目录)
+    current = Path(__file__).resolve().parent
+    for parent in [current] + list(current.parents):
+        env_file = parent / 'env.txt'
+        if env_file.exists():
+            with open(env_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    if '=' in line:
+                        key, _, value = line.partition('=')
+                        config[key.strip()] = value.strip()
+            break
+
+    return config
+
+_env_config = _load_env_txt()
+
+# 按优先级: 环境变量 > env.txt > 默认值
+BACKEND_HOST = os.environ.get('BACKEND_HOST', _env_config.get('BACKEND_HOST', '0.0.0.0'))
+BACKEND_PORT = int(os.environ.get('BACKEND_PORT', _env_config.get('BACKEND_PORT', '8000')))
+CENTER_LAT = float(os.environ.get('CENTER_LAT', _env_config.get('CENTER_LAT', '30.0')))
+CENTER_LNG = float(os.environ.get('CENTER_LNG', _env_config.get('CENTER_LNG', '120.0')))
 
 # =============================================================================
 # 数据模型
@@ -305,8 +343,8 @@ async def mock_data_generator():
     # 模拟状态
     t = 0.0
     # 中心点 (模拟某测试场地)
-    center_lat = 30.0
-    center_lon = 120.0
+    center_lat = CENTER_LAT
+    center_lon = CENTER_LNG
 
     while True:
         await asyncio.sleep(0.5)  # 每秒2次更新
@@ -370,8 +408,8 @@ async def mock_data_generator():
 if __name__ == '__main__':
     uvicorn.run(
         'main:app',
-        host='0.0.0.0',
-        port=8000,
+        host=BACKEND_HOST,
+        port=BACKEND_PORT,
         reload=True,
         log_level='info',
     )

@@ -24,6 +24,9 @@ src/web/dist/
 .vscode/
 .idea/
 
+# Environment configuration (可能含 API 密钥)
+env.txt
+
 # Test artifacts
 integration_test_report.txt
 *.bag
