@@ -73,7 +73,8 @@ const delayClass = computed(() => {
 const TIANDITU_KEY = '66773e61397afa9c511d62fc259f3e70'
 
 onMounted(() => {
-  initMap()
+  // 等待天地图 API 加载完成后再初始化地图
+  waitForTianditu()
 })
 
 onUnmounted(() => {
@@ -82,6 +83,36 @@ onUnmounted(() => {
     map = null
   }
 })
+
+/**
+ * 等待天地图 API 加载完成，带超时和重试机制
+ */
+function waitForTianditu(retries = 30, interval = 200): void {
+  // 检查 T 全局对象是否已加载
+  if (typeof T !== 'undefined' && T.Map && T.TileLayer) {
+    console.log('[Map] 天地图 API 已就绪，开始初始化地图')
+    initMap()
+    return
+  }
+
+  if (retries <= 0) {
+    console.error('[Map] 天地图 API 加载超时，请检查网络连接或 API Key 是否有效')
+    // 显示错误提示
+    const container = document.getElementById('tianditu-map')
+    if (container) {
+      container.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#f44336;font-size:16px;flex-direction:column;gap:12px;">
+          <span style="font-size:32px;">🗺️</span>
+          <span>地图加载失败</span>
+          <span style="font-size:12px;opacity:0.6;">请检查网络连接或刷新页面重试</span>
+        </div>`
+    }
+    return
+  }
+
+  console.log(`[Map] 等待天地图 API 就绪... (剩余重试 ${retries} 次)`)
+  setTimeout(() => waitForTianditu(retries - 1, interval), interval)
+}
 
 function initMap() {
   const container = document.getElementById('tianditu-map')

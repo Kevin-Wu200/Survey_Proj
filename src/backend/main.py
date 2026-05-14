@@ -287,9 +287,81 @@ async def broadcast_state_loop():
 
 @app.on_event('startup')
 async def startup_event():
-    """应用启动时启动广播任务"""
+    """应用启动时启动广播任务和模拟数据生成器"""
     asyncio.create_task(broadcast_state_loop())
+    asyncio.create_task(mock_data_generator())
     print('[启动] Web 后端服务已启动，WebSocket 端点: /ws')
+    print('[启动] 模拟数据生成器已启动 (UAV椭圆航线 + UGV往复行驶)')
+
+# =============================================================================
+# =============================================================================
+# 模拟数据生成器 (无 ROS2 环境时提供仿真数据)
+# =============================================================================
+
+async def mock_data_generator():
+    """周期性生成 UAV/UGV 模拟位置数据，模拟真实运动轨迹"""
+    import math
+
+    # 模拟状态
+    t = 0.0
+    # 中心点 (模拟某测试场地)
+    center_lat = 30.0
+    center_lon = 120.0
+
+    while True:
+        await asyncio.sleep(0.5)  # 每秒2次更新
+        t += 0.5
+
+        # UAV: 椭圆航线 (半径约 200m)
+        # 纬度1度 ≈ 111320m, 经度1度 ≈ 111320*cos(lat)
+        cos_lat = math.cos(math.radians(center_lat))
+        uav_lat = center_lat + 0.001 * math.sin(t * 0.5)       # 约 111m 振幅
+        uav_lon = center_lon + 0.0015 * math.cos(t * 0.3)      # 约 167m 振幅
+        uav_alt = 50.0 + 20.0 * math.sin(t * 0.4)               # 50-70m 高度
+        uav_heading = math.degrees(math.atan2(
+            math.cos(t * 0.3) * 0.0015 * 0.3,
+            -math.cos(t * 0.5) * 0.001 * 0.5
+        )) % 360
+        uav_speed = 8.0 + 3.0 * abs(math.sin(t * 0.35))         # 8-11 m/s
+        uav_flight_mode = 3                                      # 航线模式
+        uav_armed = True
+        uav_battery = max(5.0, 100.0 - t * 0.02)                # 缓慢消耗
+        uav_battery_v = 22.8
+
+        # UGV: 直线往复行驶 (约 100m 范围)
+        ugv_phase = (t * 0.2) % (2 * math.pi)
+        ugv_lat = center_lat + 0.0003 * math.sin(ugv_phase)     # 约 33m
+        ugv_lon = center_lon + 0.001 * math.cos(ugv_phase * 2)  # 约 111m
+        ugv_alt = 0.0
+        ugv_heading = math.degrees(math.atan2(
+            math.cos(ugv_phase) * 0.0003,
+            -math.sin(ugv_phase * 2) * 0.002
+        )) % 360
+        ugv_speed = 2.0 + 1.5 * abs(math.cos(ugv_phase))        # 2-3.5 m/s
+        ugv_battery = max(10.0, 100.0 - t * 0.015)
+        ugv_battery_v = 24.0
+
+        # UGV 电池低于 20% 时模拟回充
+        if ugv_battery < 20.0:
+            ugv_battery = 20.0
+            ugv_speed = 0.0
+
+        # 更新后端状态
+        app_state.update_uav(
+            lat=uav_lat, lon=uav_lon, alt=uav_alt,
+            heading=uav_heading, speed=uav_speed,
+            flight_mode=uav_flight_mode, armed=uav_armed,
+            battery=uav_battery, battery_v=uav_battery_v,
+            status_text='航线飞行 (模拟)',
+        )
+        app_state.update_ugv(
+            lat=ugv_lat, lon=ugv_lon, alt=ugv_alt,
+            heading=ugv_heading, speed=ugv_speed,
+            battery=ugv_battery, battery_v=ugv_battery_v,
+            status_text='自动巡航 (模拟)',
+            remote_control=False,
+        )
+
 
 # =============================================================================
 # 主入口
