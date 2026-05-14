@@ -32,7 +32,7 @@ from collections import deque
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import uvicorn
 
 
@@ -908,6 +908,109 @@ async def fault_status():
                 'max_retries': app_state.max_retries,
             },
         }
+
+# =============================================================================
+# REST API — 3D 场景管理
+# =============================================================================
+
+# 3D 模型存储目录 (相对于项目根目录)
+_SCENES_DIR = Path(__file__).resolve().parent.parent.parent / '3D_Model'
+# 允许的文件扩展名白名单
+_ALLOWED_EXTENSIONS = {'.glb', '.bin', '.png', '.jpg', '.jpeg', '.webp', '.json'}
+
+
+def _get_project_root() -> Path:
+    """获取项目根目录"""
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def _scan_scenes_dir(base_dir: Path, rel_prefix: str = '') -> list:
+    """递归扫描场景目录，返回所有 GLB 文件信息"""
+    scenes = []
+    try:
+        for entry in sorted(base_dir.iterdir()):
+            if entry.name.startswith('.'):
+                continue
+            rel_path = f'{rel_prefix}{entry.name}' if rel_prefix else entry.name
+
+            if entry.is_dir():
+                # 递归子目录
+                scenes.extend(_scan_scenes_dir(entry, f'{rel_path}/'))
+            elif entry.is_file() and entry.suffix.lower() == '.glb':
+                # 读取同目录 metadata.json 获取显示名称
+                metadata_path = entry.parent / 'metadata.json'
+                display_name = entry.stem
+                if metadata_path.exists():
+                    try:
+                        with open(metadata_path, 'r', encoding='utf-8') as f:
+                            meta = json.load(f)
+                            display_name = meta.get('displayName', entry.stem)
+                    except (json.JSONDecodeError, IOError):
+                        pass
+
+                scenes.append({
+                    'name': display_name,
+                    'filename': entry.name,
+                    'path': rel_path,
+                    'size': entry.stat().st_size,
+                    'format': 'glb',
+                })
+    except FileNotFoundError:
+        pass
+    return scenes
+
+
+@app.get('/api/scenes')
+async def list_scenes():
+    """
+    获取可用 3D 场景列表
+    扫描 3D_Model/ 目录下所有 GLB 文件，返回场景信息列表
+    """
+    scenes = _scan_scenes_dir(_SCENES_DIR)
+    return JSONResponse(scenes)
+
+
+@app.get('/api/scenes/{filename:path}')
+async def get_scene_file(filename: str):
+    """
+    获取指定场景文件（GLB 模型或关联纹理）
+    路径遍历防护 + 文件类型白名单校验
+    """
+    # 安全检查：禁止路径遍历
+    if '..' in filename or filename.startswith('/'):
+        return JSONResponse({'error': '非法文件路径'}, status_code=400)
+
+    # 校验文件扩展名
+    ext = Path(filename).suffix.lower()
+    if ext not in _ALLOWED_EXTENSIONS:
+        return JSONResponse({'error': f'不支持的文件类型: {ext}'}, status_code=400)
+
+    # 解析完整路径
+    file_path = (_SCENES_DIR / filename).resolve()
+
+    # 确保文件在 3D_Model/ 目录内（防止符号链接绕过）
+    try:
+        file_path.relative_to(_SCENES_DIR.resolve())
+    except ValueError:
+        return JSONResponse({'error': '文件路径超出允许范围'}, status_code=403)
+
+    if not file_path.exists() or not file_path.is_file():
+        return JSONResponse({'error': '文件不存在'}, status_code=404)
+
+    # 根据文件类型设置 Content-Type
+    content_type_map = {
+        '.glb': 'model/gltf-binary',
+        '.bin': 'application/octet-stream',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+        '.json': 'application/json',
+    }
+    media_type = content_type_map.get(ext, 'application/octet-stream')
+
+    return FileResponse(file_path, media_type=media_type)
+
 
 # =============================================================================
 # WebSocket

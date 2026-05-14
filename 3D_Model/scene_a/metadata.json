@@ -1,0 +1,7 @@
+{
+  "displayName": "测绘场景A（示例）",
+  "description": "用于测试的示例三维场景",
+  "geoOrigin": { "lat": 30.0, "lng": 120.0, "alt": 0 },
+  "scale": 1.0,
+  "rotation": { "x": 0, "y": 0, "z": 0 }
+}

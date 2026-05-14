@@ -149,3 +149,21 @@ export const NavStateNames: Record<number, string> = {
 export const AlertLevelNames: Record<number, string> = {
   0: '信息', 1: '警告', 2: '错误', 3: '严重',
 }
+
+/** 3D 场景信息 */
+export interface SceneInfo {
+  name: string
+  filename: string
+  path: string
+  size: number
+  format: 'glb'
+}
+
+/** 3D 场景元数据 */
+export interface SceneMetadata {
+  displayName?: string
+  description?: string
+  geoOrigin?: { lat: number; lng: number; alt: number }
+  scale?: number
+  rotation?: { x: number; y: number; z: number }
+}

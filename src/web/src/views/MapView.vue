@@ -1,17 +1,55 @@
 <template>
   <div class="map-container">
-    <div id="amap-container" class="map-canvas"></div>
+    <!-- 视图模式切换工具栏 -->
+    <div class="view-toolbar">
+      <button
+        class="mode-btn"
+        :class="{ active: viewMode === 'amap' }"
+        @click="switchMode('amap')"
+      >
+        <span class="mode-icon">🗺️</span> 2D 地图
+      </button>
+      <button
+        class="mode-btn"
+        :class="{ active: viewMode === 'glb' }"
+        @click="switchMode('glb')"
+      >
+        <span class="mode-icon">🌐</span> 3D 场景
+      </button>
+      <template v-if="viewMode === 'glb'">
+        <select
+          v-model="selectedScene"
+          class="scene-select"
+          @change="onSceneChange"
+        >
+          <option value="">-- 选择场景 --</option>
+          <option v-for="s in scenes" :key="s.filename" :value="s.filename">
+            {{ s.name }} ({{ formatSize(s.size) }})
+          </option>
+        </select>
+        <span v-if="isLoading" class="loading-spinner">⏳ 加载中...</span>
+      </template>
+    </div>
 
-    <!-- UGV 导航目标提示 -->
-    <div class="map-overlay top-right" v-if="ugvNavTarget">
+    <!-- AMap 容器 -->
+    <div v-show="viewMode === 'amap'" id="amap-container" class="map-canvas"></div>
+    <!-- Three.js Canvas 容器 -->
+    <div v-show="viewMode === 'glb'" id="three-container" class="map-canvas"></div>
+    <!-- 加载错误提示 -->
+    <div v-if="loadError" class="load-error" @click="loadError = ''">
+      ⚠️ {{ loadError }} (点击关闭)
+    </div>
+
+    <!-- UGV 导航目标提示 (仅 2D 模式) -->
+    <div class="map-overlay top-right" v-if="ugvNavTarget && viewMode === 'amap'">
       <div class="overlay-box nav-target">
         🎯 UGV 目标: {{ ugvNavTarget.lat.toFixed(6) }}°, {{ ugvNavTarget.lng.toFixed(6) }}°
         <button @click="cancelNavTarget" class="cancel-btn">✕</button>
       </div>
     </div>
 
-    <!-- 地图信息叠加 -->
-    <div class="map-overlay top-left">
+    <!-- 地图信息叠加 (仅 2D 模式) -->
+    <div class="map-overlay top-left" v-if="viewMode === 'amap'">
       <div class="overlay-box">
         <span>地图中心: {{ centerLng.toFixed(4) }}°, {{ centerLat.toFixed(4) }}°</span>
         <span>缩放: {{ zoomLevel }}</span>
@@ -53,8 +91,23 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useSystemStore } from '@/stores/system'
+import { useThreeScene } from '@/composables/useThreeScene'
+import { use3DMarkers } from '@/composables/use3DMarkers'
+import type { SceneInfo } from '@/types'
 
 const store = useSystemStore()
+
+// Three.js 3D 场景实例（按需初始化）
+const threeScene = useThreeScene()
+let threeMarkers: ReturnType<typeof use3DMarkers> | null = null
+let threeInitialized = false
+
+// 视图模式状态
+const viewMode = ref<'amap' | 'glb'>('amap')
+const scenes = ref<SceneInfo[]>([])
+const selectedScene = ref('')
+const isLoading = ref(false)
+const loadError = ref('')
 
 // 地图实例
 let map: any = null
@@ -122,6 +175,117 @@ defineExpose({
   addWaypointToMap,
 })
 
+// =========================================================================
+// 3D 场景管理
+// =========================================================================
+
+/**
+ * 获取可用 3D 场景列表
+ */
+async function fetchScenes(): Promise<void> {
+  try {
+    const res = await fetch('/api/scenes')
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    scenes.value = await res.json()
+    console.log(`[MapView] 场景列表已获取: ${scenes.value.length} 个场景`)
+  } catch (e) {
+    console.error('[MapView] 获取场景列表失败:', e)
+    // 静默失败，不影响 2D 地图正常使用
+  }
+}
+
+/**
+ * 切换视图模式
+ */
+function switchMode(mode: 'amap' | 'glb'): void {
+  if (viewMode.value === mode) return
+
+  if (mode === 'glb') {
+    // 切换到 3D 模式
+    if (!threeInitialized) {
+      try {
+        threeScene.initScene('three-container')
+        threeInitialized = true
+
+        // 初始化 3D 标记
+        if (threeScene.scene.value) {
+          threeMarkers = use3DMarkers(threeScene.scene.value)
+        }
+      } catch (e) {
+        console.error('[MapView] Three.js 初始化失败:', e)
+        loadError.value = 'WebGL 初始化失败，请检查浏览器是否支持 WebGL'
+        return
+      }
+    }
+    viewMode.value = 'glb'
+    console.log('[MapView] 切换到 3D 场景模式')
+  } else {
+    // 切换回 2D AMap 模式
+    viewMode.value = 'amap'
+    console.log('[MapView] 切换到 2D 地图模式')
+  }
+}
+
+/**
+ * 场景选择变更处理
+ */
+async function onSceneChange(): Promise<void> {
+  if (!selectedScene.value) {
+    loadError.value = ''
+    return
+  }
+
+  isLoading.value = true
+  loadError.value = ''
+
+  try {
+    const sceneInfo = scenes.value.find(s => s.filename === selectedScene.value)
+    if (!sceneInfo) {
+      throw new Error('场景信息未找到')
+    }
+
+    // 加载场景元数据（用于设置坐标原点）
+    const metaPath = selectedScene.value.replace(/\.glb$/i, '') + '/metadata.json'
+    try {
+      const metaRes = await fetch(`/api/scenes/${metaPath}`)
+      if (metaRes.ok) {
+        const meta = await metaRes.json()
+        if (meta.geoOrigin && threeMarkers) {
+          threeMarkers.setGeoOrigin(
+            meta.geoOrigin.lat,
+            meta.geoOrigin.lng,
+            meta.geoOrigin.alt ?? 0,
+          )
+        }
+      }
+    } catch {
+      // metadata.json 不存在，使用默认原点
+    }
+
+    // 加载 GLB 模型
+    await threeScene.loadModel(`/api/scenes/${sceneInfo.path}`)
+  } catch (e: any) {
+    console.error('[MapView] 场景加载失败:', e)
+    loadError.value = `场景加载失败: ${e.message || '未知错误'}`
+    selectedScene.value = ''
+  } finally {
+    isLoading.value = false
+  }
+}
+
+/**
+ * 格式化文件大小显示
+ */
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// =========================================================================
+// 生命周期
+// =========================================================================
+
 onMounted(() => {
   // 监听 WaypointToolbar 的绘制状态变化
   window.addEventListener('drawing-state-changed', onDrawingStateChanged as EventListener)
@@ -129,6 +293,10 @@ onMounted(() => {
   window.addEventListener('waypoints-cleared', clearWaypoints)
   // 监听航点更新事件（用于同步删除操作）
   window.addEventListener('waypoints-updated', onWaypointsUpdated as EventListener)
+
+  // 获取 3D 场景列表
+  fetchScenes()
+
   waitForAMap()
 })
 
@@ -136,6 +304,17 @@ onUnmounted(() => {
   window.removeEventListener('drawing-state-changed', onDrawingStateChanged as EventListener)
   window.removeEventListener('waypoints-cleared', clearWaypoints)
   window.removeEventListener('waypoints-updated', onWaypointsUpdated as EventListener)
+
+  // 清理 3D 资源
+  if (threeMarkers) {
+    threeMarkers.dispose()
+    threeMarkers = null
+  }
+  if (threeInitialized) {
+    threeScene.destroyScene()
+    threeInitialized = false
+  }
+
   if (map) {
     map.destroy()
     map = null
@@ -398,21 +577,30 @@ function createCircleIcon(color: string): string {
 watch(
   () => store.uavPosition,
   (pos) => {
-    if (!pos || !map) return
-    const lngLat: [number, number] = [pos.longitude, pos.latitude]
+    if (!pos) return
 
-    uavMarker?.setPosition(lngLat)
-    uavLabel?.setPosition([pos.longitude, pos.latitude + 0.0005])
-    uavLabel?.setText(
-      `UAV ${pos.altitude.toFixed(0)}m ${pos.speed.toFixed(1)}m/s`
-    )
+    // 3D 模式：更新 Sprite 标记
+    if (viewMode.value === 'glb' && threeMarkers) {
+      threeMarkers.updateUAV(pos.latitude, pos.longitude, pos.altitude, pos.heading)
+    }
 
-    if (pos.speed > 0.1) {
-      uavTrackPoints.push({ lng: pos.longitude, lat: pos.latitude })
-      if (uavTrackPoints.length > MAX_TRACK_POINTS) {
-        uavTrackPoints.shift()
+    // AMap 模式：更新地图标记
+    if (viewMode.value === 'amap' && map) {
+      const lngLat: [number, number] = [pos.longitude, pos.latitude]
+
+      uavMarker?.setPosition(lngLat)
+      uavLabel?.setPosition([pos.longitude, pos.latitude + 0.0005])
+      uavLabel?.setText(
+        `UAV ${pos.altitude.toFixed(0)}m ${pos.speed.toFixed(1)}m/s`
+      )
+
+      if (pos.speed > 0.1) {
+        uavTrackPoints.push({ lng: pos.longitude, lat: pos.latitude })
+        if (uavTrackPoints.length > MAX_TRACK_POINTS) {
+          uavTrackPoints.shift()
+        }
+        updateUAVTrack()
       }
-      updateUAVTrack()
     }
 
     const now = Date.now()
@@ -428,19 +616,28 @@ watch(
 watch(
   () => store.ugvPosition,
   (pos) => {
-    if (!pos || !map) return
-    const lngLat: [number, number] = [pos.longitude, pos.latitude]
+    if (!pos) return
 
-    ugvMarker?.setPosition(lngLat)
-    ugvLabel?.setPosition([pos.longitude, pos.latitude + 0.0005])
-    ugvLabel?.setText(`UGV ${pos.speed.toFixed(1)}m/s`)
+    // 3D 模式：更新 Sprite 标记
+    if (viewMode.value === 'glb' && threeMarkers) {
+      threeMarkers.updateUGV(pos.latitude, pos.longitude, pos.heading)
+    }
 
-    if (pos.speed > 0.1) {
-      ugvTrackPoints.push({ lng: pos.longitude, lat: pos.latitude })
-      if (ugvTrackPoints.length > MAX_TRACK_POINTS) {
-        ugvTrackPoints.shift()
+    // AMap 模式：更新地图标记
+    if (viewMode.value === 'amap' && map) {
+      const lngLat: [number, number] = [pos.longitude, pos.latitude]
+
+      ugvMarker?.setPosition(lngLat)
+      ugvLabel?.setPosition([pos.longitude, pos.latitude + 0.0005])
+      ugvLabel?.setText(`UGV ${pos.speed.toFixed(1)}m/s`)
+
+      if (pos.speed > 0.1) {
+        ugvTrackPoints.push({ lng: pos.longitude, lat: pos.latitude })
+        if (ugvTrackPoints.length > MAX_TRACK_POINTS) {
+          ugvTrackPoints.shift()
+        }
+        updateUGVTrack()
       }
-      updateUGVTrack()
     }
   },
   { deep: true }
@@ -550,6 +747,101 @@ if (typeof window !== 'undefined') {
 .map-canvas {
   width: 100%;
   height: 100%;
+}
+
+/* 视图模式切换工具栏 */
+.view-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.mode-btn:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+.mode-btn.active {
+  background: rgba(0, 188, 212, 0.25);
+  border-color: #00bcd4;
+  color: #00bcd4;
+}
+
+.mode-icon {
+  font-size: 16px;
+}
+
+.scene-select {
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 180px;
+  outline: none;
+}
+
+.scene-select option {
+  background: #1a1a2e;
+  color: #fff;
+}
+
+.scene-select:focus {
+  border-color: #00bcd4;
+}
+
+.loading-spinner {
+  color: #00bcd4;
+  font-size: 13px;
+  white-space: nowrap;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.load-error {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: rgba(244, 67, 54, 0.9);
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .map-overlay {

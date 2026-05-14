@@ -30,3 +30,7 @@ env.txt
 # Test artifacts
 integration_test_report.txt
 *.bag
+
+# 3D Models (大文件，使用 Git LFS 或不纳入版本控制)
+3D_Model/*.glb
+3D_Model/*/textures/
