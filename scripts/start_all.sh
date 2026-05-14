@@ -53,6 +53,42 @@ else
     exit 1
 fi
 
+# -----------------------------------------------------------------------------
+# 自动检查并激活 ROS2 环境
+# -----------------------------------------------------------------------------
+echo ""
+echo "----------------------------------------------"
+echo " 检查并激活 ROS2 环境..."
+echo "----------------------------------------------"
+
+ROS2_SETUP="/opt/ros/humble/setup.bash"
+ROS2_WS_SETUP="$PROJECT_DIR/src/ros2_ws/install/setup.bash"
+
+if [ -f "$ROS2_SETUP" ]; then
+    source "$ROS2_SETUP"
+    echo "  ✓ ROS2 Humble 环境已激活: $ROS2_SETUP"
+else
+    echo "  ⚠ 未找到 ROS2 Humble ($ROS2_SETUP)"
+    echo "    请确认 ROS2 已正确安装，或修改脚本中的 ROS2_SETUP 路径"
+fi
+
+if [ -f "$ROS2_WS_SETUP" ]; then
+    source "$ROS2_WS_SETUP"
+    echo "  ✓ ROS2 工作空间已加载: $ROS2_WS_SETUP"
+else
+    echo "  ⚠ 未找到 ROS2 工作空间安装目录"
+    echo "    请先编译 ros2_ws: cd src/ros2_ws && colcon build"
+fi
+
+# DDS 配置
+export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+if [ -f "$PROJECT_DIR/config/dds/cyclonedds.xml" ]; then
+    export CYCLONEDDS_URI="${CYCLONEDDS_URI:-file://$PROJECT_DIR/config/dds/cyclonedds.xml}"
+    echo "  ✓ DDS 配置: RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION"
+else
+    echo "  ⚠ 未找到 DDS 配置文件: config/dds/cyclonedds.xml"
+fi
+
 # 杀掉已有进程
 CLEANUP_DONE=0
 cleanup() {
@@ -84,29 +120,21 @@ FRONTEND_PID=$!
 sleep 3
 echo "  前端服务已启动: http://${FRONTEND_HOST}:${FRONTEND_PORT}"
 
-# 3. 提示 ROS2 启动 (需要手动在另一个终端执行)
+# 提示
 echo ""
-echo "[3/3] ROS2 节点启动说明:"
-echo "  在另一个终端执行以下命令:"
+echo "=============================================="
+echo " ROS2 环境已自动激活"
+echo " 地面站 / UAV 仿真 / UGV 仿真 请按需手动启动"
+echo "=============================================="
 echo ""
-echo "  # 激活 ROS2 环境"
-echo "  source /opt/ros/humble/setup.bash"
-echo "  source $PROJECT_DIR/src/ros2_ws/install/setup.bash"
-echo "  export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp"
-echo "  export CYCLONEDDS_URI=file://$PROJECT_DIR/config/dds/cyclonedds.xml"
+echo " 启动地面站:"
+echo "   ros2 launch ground_station ground_station.launch.py"
 echo ""
-echo "  # 启动地面站"
-echo "  ros2 launch ground_station ground_station.launch.py"
+echo " 启动 UAV 仿真:"
+echo "   ros2 launch uav_sim uav_sim.launch.py use_gazebo:=false"
 echo ""
-echo "  # 新终端: 启动 UAV 仿真"
-echo "  ros2 launch uav_sim uav_sim.launch.py use_gazebo:=false"
-echo ""
-echo "  # 新终端: 启动 UGV 仿真"
-echo "  ros2 launch ugv_sim ugv_sim.launch.py use_gazebo:=false"
-echo ""
-echo "  # 发送起飞指令"
-echo "  ros2 topic pub /uav/cmd std_msgs/msg/String \"data: 'arm'\""
-echo "  ros2 topic pub /uav/cmd std_msgs/msg/String \"data: 'takeoff'\""
+echo " 启动 UGV 仿真:"
+echo "   ros2 launch ugv_sim ugv_sim.launch.py use_gazebo:=false"
 echo ""
 echo "=============================================="
 echo " Web 监测页面: http://${FRONTEND_HOST}:${FRONTEND_PORT}"

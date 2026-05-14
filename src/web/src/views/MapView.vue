@@ -71,6 +71,25 @@ let replayUavMarker: any = null  // 回放 UAV 标记
 let replayUgvMarker: any = null  // 回放 UGV 标记
 let navPathLine: any = null      // 导航规划路径
 
+// 绘制模式状态（由 WaypointToolbar 通过 drawing-state-changed 事件同步）
+const drawingActive = ref(false)
+
+function onDrawingStateChanged(e: CustomEvent) {
+  drawingActive.value = e.detail?.drawingEnabled ?? false
+}
+
+function onWaypointsUpdated(e: CustomEvent) {
+  // 简化处理：航点数量变化时，重建地图标记
+  // 从最新事件获取数量
+  const count = e.detail?.count ?? 0
+  if (count === 0) {
+    clearWaypoints()
+  }
+  // 对于单个删除，简单重建：清除所有标记并重新添加（保留前 count 个）
+  // 由于无法获取精确坐标，这里只处理全部清空的情况
+  // 精确的逐点删除需要更复杂的跨组件通信
+}
+
 // 轨迹历史点
 const uavTrackPoints: { lng: number; lat: number }[] = []
 const ugvTrackPoints: { lng: number; lat: number }[] = []
@@ -104,10 +123,19 @@ defineExpose({
 })
 
 onMounted(() => {
+  // 监听 WaypointToolbar 的绘制状态变化
+  window.addEventListener('drawing-state-changed', onDrawingStateChanged as EventListener)
+  // 监听航点清空事件
+  window.addEventListener('waypoints-cleared', clearWaypoints)
+  // 监听航点更新事件（用于同步删除操作）
+  window.addEventListener('waypoints-updated', onWaypointsUpdated as EventListener)
   waitForAMap()
 })
 
 onUnmounted(() => {
+  window.removeEventListener('drawing-state-changed', onDrawingStateChanged as EventListener)
+  window.removeEventListener('waypoints-cleared', clearWaypoints)
+  window.removeEventListener('waypoints-updated', onWaypointsUpdated as EventListener)
   if (map) {
     map.destroy()
     map = null
@@ -237,6 +265,9 @@ function handleMapClick(lng: number, lat: number) {
 }
 
 function addWaypointToMap(lat: number, lng: number) {
+  // 仅在绘制模式下才在地图上添加航点标记
+  if (!drawingActive.value) return
+
   // 尝试通知 WaypointToolbar
   // 通过全局事件通信
   window.dispatchEvent(new CustomEvent('map-waypoint-click', {

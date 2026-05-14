@@ -118,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useSystemStore } from '@/stores/system'
 import type { Waypoint } from '@/types'
 
@@ -157,19 +157,43 @@ function addWaypoint(lat: number, lon: number) {
 
 function removeWaypoint(index: number) {
   customWaypoints.value.splice(index, 1)
+  // 通知地图更新标记
+  window.dispatchEvent(new CustomEvent('waypoints-updated', {
+    detail: { count: customWaypoints.value.length },
+  }))
 }
 
 function clearWaypoints() {
   customWaypoints.value = []
+  // 通知地图清除标记
+  window.dispatchEvent(new CustomEvent('waypoints-cleared'))
 }
 
 function toggleDrawing() {
   drawingEnabled.value = !drawingEnabled.value
 }
 
+// -- 监听地图点击事件，接收航点坐标 --
+function onMapWaypointClick(e: Event) {
+  const customEvent = e as CustomEvent<{ lat: number; lon: number }>
+  if (customEvent.detail) {
+    addWaypoint(customEvent.detail.lat, customEvent.detail.lon)
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('map-waypoint-click', onMapWaypointClick)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('map-waypoint-click', onMapWaypointClick)
+})
+
 // -- 观察 drawingEnabled 变化，通知地图组件 --
 watch(drawingEnabled, (val) => {
-  // 通过 emit 或直接操作地图状态
+  window.dispatchEvent(new CustomEvent('drawing-state-changed', {
+    detail: { drawingEnabled: val },
+  }))
 })
 
 // API 调用
