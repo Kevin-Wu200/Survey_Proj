@@ -2,7 +2,7 @@
  * useSimulation.ts — 前端仿真引擎
  *
  * 替代后端 mock_data_generator，在前端 Three.js 场景中直接运行仿真：
- * - UAV：椭圆航线飞行，高度由用户通过 WaypointToolbar 输入
+ * - UAV：椭圆航线飞行，高度=UGV当前高程+偏移量(默认50m)
  * - UGV：GPS坐标转世界坐标，Raycaster 查询地形高度贴地运行
  * - UGV 物理约束：坡度 > 30° 时减速阻塞，尝试沿等高线绕行
  *
@@ -31,7 +31,7 @@ export interface SimVehicleState {
 export interface SimulationInstance {
   uavState: Ref<SimVehicleState>
   ugvState: Ref<SimVehicleState>
-  uavTargetAlt: Ref<number>     // UAV 目标飞行高度（用户输入）
+  uavTargetAlt: Ref<number>     // UAV 高于 UGV 的偏移量（默认 50m）
   isRunning: Ref<boolean>
   start: () => void
   stop: () => void
@@ -94,21 +94,21 @@ function worldToLatLng(
 export function useSimulation(
   terrainQuery: TerrainQueryInstance,
 ): SimulationInstance {
-  // 地理坐标原点（与 GLB 场景绑定），WGS84 赤道原点，高程 100m
-  let _geoOrigin = { lat: 0.0, lng: 0.0, alt: 100.0 }
+  // 地理坐标原点（与 GLB 场景绑定），WGS84 赤道原点，高程 0m
+  let _geoOrigin = { lat: 0.0, lng: 0.0, alt: 0.0 }
 
   // 仿真状态
   const uavState = ref<SimVehicleState>({
-    latitude: 0.0, longitude: 0.0, altitude: 100,
+    latitude: 0.0, longitude: 0.0, altitude: 0,
     heading: 0, speed: 0,
   })
   const ugvState = ref<SimVehicleState>({
-    latitude: 0.0, longitude: 0.0, altitude: 100,
+    latitude: 0.0, longitude: 0.0, altitude: 0,
     heading: 0, speed: 0,
     slopeAngle: 0, blocked: false,
   })
 
-  const uavTargetAlt = ref(100)  // 默认 UAV 飞行高度 100m
+  const uavTargetAlt = ref(50)  // UAV 高于 UGV 的偏移量（默认 50m）
   const isRunning = ref(false)
 
   let _animationId: number | null = null
@@ -205,7 +205,7 @@ export function useSimulation(
               const gps = worldToGPS(newX, newZ, contourHeight)
               current.latitude = gps.lat
               current.longitude = gps.lng
-              current.altitude = contourHeight
+              current.altitude = contourHeight + _geoOrigin.alt
               current.blocked = false
               current.blockedReason = undefined
               current.slopeAngle = contourSlope.angle
@@ -226,26 +226,27 @@ export function useSimulation(
     current.blockedReason = undefined
     current.slopeAngle = slopeInfo?.angle ?? 0
 
-    const targetGPS = worldToGPS(targetX, targetZ, terrainHeight)
+    const targetGPS = worldToGPS(targetX, targetZ, terrainHeight + _geoOrigin.alt)
     current.latitude = targetGPS.lat
     current.longitude = targetGPS.lng
-    current.altitude = terrainHeight
+    current.altitude = terrainHeight + _geoOrigin.alt
     current.heading = headingDeg
     current.speed = speedMps
   }
 
   /**
-   * UAV 移动逻辑：椭圆航线，高度使用用户输入的目标高度
+   * UAV 移动逻辑：椭圆航线，高度 = UGV 当前高程 + 偏移量(默认50m)
    */
   function stepUAV(): void {
     const centerLat = _geoOrigin.lat
     const centerLon = _geoOrigin.lng
-    const targetAlt = uavTargetAlt.value
+    const uavOffset = uavTargetAlt.value  // 高于 UGV 的偏移量
+    const ugvAlt = ugvState.value.altitude // UGV 当前地形高程
 
     // 椭圆航线（同后端逻辑）
     const uavLat = centerLat + 0.001 * Math.sin(_simTime * 0.5)
     const uavLon = centerLon + 0.0015 * Math.cos(_simTime * 0.3)
-    const uavAlt = targetAlt + 10.0 * Math.sin(_simTime * 0.4) // 在目标高度附近微小波动
+    const uavAlt = ugvAlt + uavOffset + 10.0 * Math.sin(_simTime * 0.4) // UGV高程+偏移+波动
     const uavHeading = Math.atan2(
       Math.cos(_simTime * 0.3) * 0.0015 * 0.3,
       -Math.cos(_simTime * 0.5) * 0.001 * 0.5

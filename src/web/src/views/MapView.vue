@@ -37,7 +37,7 @@
     <!-- UAV 高度显示 -->
     <div class="map-overlay top-left">
       <div class="overlay-box">
-        <span>🛸 UAV 高度: {{ simUavAlt.toFixed(0) }}m (目标: {{ uavTargetAlt }}m)</span>
+        <span>🛸 UAV 高于 UGV: {{ uavTargetAlt }}m (当前: {{ simUavAlt.toFixed(0) }}m)</span>
       </div>
     </div>
 
@@ -169,7 +169,7 @@ async function onSceneChange(): Promise<void> {
     if (!sceneInfo) throw new Error('场景信息未找到')
 
     // 加载场景元数据
-    let geoOrigin = { lat: 0.0, lng: 0.0, alt: 100.0 }
+    let geoOrigin = { lat: 0.0, lng: 0.0, alt: 0.0 }
     const metaPath = selectedScene.value.replace(/\.glb$/i, '_metadata.json')
       .replace(/(.+)\.glb$/, '$1/metadata.json')
     try {
@@ -180,7 +180,7 @@ async function onSceneChange(): Promise<void> {
           geoOrigin = {
             lat: meta.geoOrigin.lat ?? 0.0,
             lng: meta.geoOrigin.lng ?? 0.0,
-            alt: meta.geoOrigin.alt ?? 100.0,
+            alt: meta.geoOrigin.alt ?? 0.0,
           }
         }
       }

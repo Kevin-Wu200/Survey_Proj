@@ -28,7 +28,7 @@ class UAVController(Node):
         # --- 参数 ---
         self.declare_parameter('home_lat', 0.0)           # 起飞点纬度（WGS84 赤道原点）
         self.declare_parameter('home_lon', 0.0)           # 起飞点经度（WGS84 赤道原点）
-        self.declare_parameter('home_alt', 100.0)         # 起飞点海拔 100m
+        self.declare_parameter('home_alt', 0.0)           # 起飞点海拔 0m（贴合地形）
         self.declare_parameter('takeoff_height', 10.0)    # 起飞高度 (m)
         self.declare_parameter('hover_duration', 30.0)    # 悬停持续时间 (秒)
         self.declare_parameter('update_rate', 20.0)       # 更新频率 (Hz)

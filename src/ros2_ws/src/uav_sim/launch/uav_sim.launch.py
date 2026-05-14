@@ -27,7 +27,7 @@ def generate_launch_description():
         parameters=[{
             'home_lat': home_lat,
             'home_lon': home_lon,
-            'home_alt': 100.0,
+            'home_alt': 0.0,
             'takeoff_height': takeoff_height,
             'hover_duration': 30.0,
             'update_rate': 20.0,

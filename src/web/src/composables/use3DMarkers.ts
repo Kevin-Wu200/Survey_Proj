@@ -129,8 +129,8 @@ export interface ThreeMarkersInstance {
 }
 
 export function use3DMarkers(scene: Scene): ThreeMarkersInstance {
-  // 地理坐标原点，WGS84 赤道原点，高程 100m
-  let _geoOrigin = { lat: 0.0, lng: 0.0, alt: 100.0 }
+  // 地理坐标原点，WGS84 赤道原点，高程 0m
+  let _geoOrigin = { lat: 0.0, lng: 0.0, alt: 0.0 }
   let _scale = 1.0
 
   // 标记对象

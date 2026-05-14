@@ -36,7 +36,7 @@ class Ros2WebsocketBridge(Node):
         self.lock = threading.Lock()
         self._uav_lat = 0.0
         self._uav_lon = 0.0
-        self._uav_alt = 100.0
+        self._uav_alt = 0.0
         self._uav_heading = 0.0
         self._uav_speed = 0.0
         self._uav_flight_mode = 0
@@ -47,7 +47,7 @@ class Ros2WebsocketBridge(Node):
 
         self._ugv_lat = 0.0
         self._ugv_lon = 0.0
-        self._ugv_alt = 100.0
+        self._ugv_alt = 0.0
         self._ugv_heading = 0.0
         self._ugv_speed = 0.0
         self._ugv_battery = 100.0
