@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+venv/
+
+# ROS2
+src/ros2_ws/build/
+src/ros2_ws/install/
+src/ros2_ws/log/
+
+# Node.js
+node_modules/
+src/web/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Test artifacts
+integration_test_report.txt
+*.bag

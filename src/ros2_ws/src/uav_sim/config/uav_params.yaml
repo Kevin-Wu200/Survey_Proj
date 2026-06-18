@@ -1,0 +1,19 @@
+# UAV 仿真参数配置
+uav_controller:
+  ros__parameters:
+    home_lat: 30.0
+    home_lon: 120.0
+    home_alt: 0.0
+    takeoff_height: 10.0       # 起飞高度 (m)
+    hover_duration: 30.0       # 悬停持续时间 (秒)
+    update_rate: 20.0          # 控制更新频率 (Hz)
+    max_velocity: 5.0          # 最大飞行速度 (m/s)
+    battery_capacity: 6000.0   # 电池容量 (mAh)
+
+uav_camera_sim:
+  ros__parameters:
+    image_width: 1920
+    image_height: 1080
+    capture_interval: 5.0      # 拍照间隔 (秒)
+    jpeg_quality: 80
+    camera_fov: 84.0           # 视场角 (度)

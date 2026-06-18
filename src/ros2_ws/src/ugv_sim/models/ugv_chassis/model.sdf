@@ -1,0 +1,257 @@
+<?xml version="1.0"?>
+<sdf version="1.8">
+  <model name="ugv_chassis">
+
+    <pose>0 0 0.2 0 0 0</pose>
+
+    <!-- 车身 -->
+    <link name="chassis">
+      <inertial>
+        <mass>25.0</mass>
+        <inertia>
+          <ixx>1.0</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>1.5</iyy>
+          <iyz>0.0</iyz>
+          <izz>2.0</izz>
+        </inertia>
+      </inertial>
+
+      <collision name="chassis_collision">
+        <geometry>
+          <box>
+            <size>1.0 0.6 0.4</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <visual name="chassis_visual">
+        <geometry>
+          <box>
+            <size>1.0 0.6 0.4</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.3 0.1</ambient>
+          <diffuse>0.2 0.5 0.2</diffuse>
+          <specular>0.1 0.1 0.1</specular>
+        </material>
+      </visual>
+
+      <!-- IMU 传感器 -->
+      <sensor name="imu_sensor" type="imu">
+        <always_on>true</always_on>
+        <update_rate>100</update_rate>
+        <imu>
+          <angular_velocity>
+            <x><noise type="GAUSSIAN"><mean>0</mean><stddev>0.001</stddev></noise></x>
+            <y><noise type="GAUSSIAN"><mean>0</mean><stddev>0.001</stddev></noise></y>
+            <z><noise type="GAUSSIAN"><mean>0</mean><stddev>0.001</stddev></noise></z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x><noise type="GAUSSIAN"><mean>0</mean><stddev>0.01</stddev></noise></x>
+            <y><noise type="GAUSSIAN"><mean>0</mean><stddev>0.01</stddev></noise></y>
+            <z><noise type="GAUSSIAN"><mean>0</mean><stddev>0.01</stddev></noise></z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+    </link>
+
+    <!-- 左前轮 -->
+    <link name="wheel_fl">
+      <pose>0.4 0.35 -0.1 0 0 0</pose>
+      <inertial>
+        <mass>1.5</mass>
+        <inertia>
+          <ixx>0.01</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.01</iyy><iyz>0</iyz>
+          <izz>0.02</izz>
+        </inertia>
+      </inertial>
+      <collision name="wheel_fl_collision">
+        <geometry>
+          <cylinder>
+            <radius>0.15</radius>
+            <length>0.1</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="wheel_fl_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.15</radius>
+            <length>0.1</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1</ambient>
+          <diffuse>0.2 0.2 0.2</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- 左前轮关节 (旋转) -->
+    <joint name="wheel_fl_joint" type="revolute">
+      <parent>chassis</parent>
+      <child>wheel_fl</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+      </axis>
+    </joint>
+
+    <!-- 右前轮 -->
+    <link name="wheel_fr">
+      <pose>0.4 -0.35 -0.1 0 0 0</pose>
+      <inertial>
+        <mass>1.5</mass>
+        <inertia>
+          <ixx>0.01</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.01</iyy><iyz>0</iyz>
+          <izz>0.02</izz>
+        </inertia>
+      </inertial>
+      <collision name="wheel_fr_collision">
+        <geometry>
+          <cylinder>
+            <radius>0.15</radius>
+            <length>0.1</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="wheel_fr_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.15</radius>
+            <length>0.1</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1</ambient>
+          <diffuse>0.2 0.2 0.2</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <joint name="wheel_fr_joint" type="revolute">
+      <parent>chassis</parent>
+      <child>wheel_fr</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+      </axis>
+    </joint>
+
+    <!-- 左后轮 -->
+    <link name="wheel_rl">
+      <pose>-0.4 0.35 -0.1 0 0 0</pose>
+      <inertial>
+        <mass>1.5</mass>
+        <inertia>
+          <ixx>0.01</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.01</iyy><iyz>0</iyz>
+          <izz>0.02</izz>
+        </inertia>
+      </inertial>
+      <collision name="wheel_rl_collision">
+        <geometry>
+          <cylinder>
+            <radius>0.15</radius>
+            <length>0.1</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="wheel_rl_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.15</radius>
+            <length>0.1</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1</ambient>
+          <diffuse>0.2 0.2 0.2</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <joint name="wheel_rl_joint" type="revolute">
+      <parent>chassis</parent>
+      <child>wheel_rl</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+      </axis>
+    </joint>
+
+    <!-- 右后轮 -->
+    <link name="wheel_rr">
+      <pose>-0.4 -0.35 -0.1 0 0 0</pose>
+      <inertial>
+        <mass>1.5</mass>
+        <inertia>
+          <ixx>0.01</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.01</iyy><iyz>0</iyz>
+          <izz>0.02</izz>
+        </inertia>
+      </inertial>
+      <collision name="wheel_rr_collision">
+        <geometry>
+          <cylinder>
+            <radius>0.15</radius>
+            <length>0.1</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="wheel_rr_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.15</radius>
+            <length>0.1</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1</ambient>
+          <diffuse>0.2 0.2 0.2</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <joint name="wheel_rr_joint" type="revolute">
+      <parent>chassis</parent>
+      <child>wheel_rr</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+      </axis>
+    </joint>
+
+    <!-- LiDAR 支架 -->
+    <link name="lidar_mount">
+      <pose>0 0 0.4 0 0 0</pose>
+      <collision name="lidar_mount_collision">
+        <geometry>
+          <cylinder>
+            <radius>0.05</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="lidar_mount_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.05</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1</ambient>
+          <diffuse>0.3 0.3 0.3</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <joint name="lidar_mount_joint" type="fixed">
+      <parent>chassis</parent>
+      <child>lidar_mount</child>
+    </joint>
+
+  </model>
+</sdf>

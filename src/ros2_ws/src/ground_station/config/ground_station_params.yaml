@@ -1,0 +1,32 @@
+# 地面站参数配置
+data_receiver:
+  ros__parameters:
+    topics_to_record:
+      - /uav/pose
+      - /uav/status
+      - /uav/heartbeat
+      - /uav/image_raw/compressed
+      - /ugv/pose
+      - /ugv/status
+      - /ugv/heartbeat
+      - /ugv/lidar/points
+      - /ugv/imu
+      - /ugv/camera/left/image_raw/compressed
+      - /ugv/camera/right/image_raw/compressed
+      - /ugv/odom
+    health_check_interval: 5.0   # 存活检测间隔 (秒)
+    heartbeat_timeout: 10.0      # 心跳超时 (秒)
+
+bag_recorder:
+  ros__parameters:
+    bag_dir: "~/airunway_bags"
+    max_bag_size: 1073741824    # 1GB
+    max_bag_duration: 600       # 10分钟
+    compression_mode: "zstd"
+
+cache_manager:
+  ros__parameters:
+    cache_root: "~/airunway_cache"
+    max_cache_size_gb: 50.0
+    retention_days: 7
+    cleanup_interval_hours: 6

@@ -1,0 +1,23 @@
+# ==========================================
+# 空地协同无人化智能测绘系统 - Python 依赖
+# ==========================================
+
+# 后端 (FastAPI + WebSocket)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+websockets>=12.0
+
+# ROS2 桥接 (地面站数据处理)
+# 注意: rclpy 由 ROS2 系统提供，不通过 pip 安装
+
+# 数据处理
+numpy>=1.24.0
+scipy>=1.10.0
+opencv-python>=4.8.0
+
+# 序列化
+msgpack>=1.0.5
+pyyaml>=6.0
+
+# 异步
+aiofiles>=23.2.0

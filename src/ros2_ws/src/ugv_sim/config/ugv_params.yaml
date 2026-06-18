@@ -1,0 +1,22 @@
+# UGV 仿真参数配置
+ugv_controller:
+  ros__parameters:
+    home_lat: 30.0
+    home_lon: 120.0
+    home_alt: 0.0
+    wheel_base: 0.5            # 轴距 (m)
+    max_linear_speed: 3.0      # 最大线速度 (m/s)
+    max_angular_speed: 2.0     # 最大角速度 (rad/s)
+    update_rate: 20.0          # 控制更新频率 (Hz)
+    battery_capacity: 10000.0  # 电池容量 (mAh)
+
+ugv_sensor_pub:
+  ros__parameters:
+    lidar_lines: 16
+    lidar_range: 100.0         # LiDAR 量程 (m)
+    lidar_hz: 10.0
+    lidar_points_per_line: 1800
+    camera_width: 1280
+    camera_height: 720
+    camera_hz: 30.0
+    imu_hz: 100.0

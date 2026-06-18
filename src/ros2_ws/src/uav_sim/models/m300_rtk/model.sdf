@@ -1,0 +1,136 @@
+<?xml version="1.0"?>
+<sdf version="1.8">
+  <model name="m300_rtk">
+
+    <!-- 基础属性 -->
+    <pose>0 0 0.5 0 0 0</pose>
+
+    <!-- 主体链接 -->
+    <link name="base_link">
+      <inertial>
+        <mass>6.3</mass>
+        <inertia>
+          <ixx>0.13</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>0.13</iyy>
+          <iyz>0.0</iyz>
+          <izz>0.23</izz>
+        </inertia>
+      </inertial>
+
+      <!-- 碰撞体 -->
+      <collision name="body_collision">
+        <geometry>
+          <box>
+            <size>0.5 0.5 0.25</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- 外观 -->
+      <visual name="body_visual">
+        <geometry>
+          <box>
+            <size>0.5 0.5 0.25</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.2 0.2 0.2</ambient>
+          <diffuse>0.4 0.4 0.4</diffuse>
+          <specular>0.1 0.1 0.1</specular>
+        </material>
+      </visual>
+
+      <!-- GPS 传感器 -->
+      <sensor name="gps_sensor" type="navsat">
+        <always_on>true</always_on>
+        <update_rate>10</update_rate>
+        <navsat>
+          <noise>
+            <type>GAUSSIAN</type>
+            <mean>0 0 0</mean>
+            <stddev>0.5 0.5 1.0</stddev>
+          </noise>
+        </navsat>
+      </sensor>
+
+      <!-- IMU 传感器 -->
+      <sensor name="imu_sensor" type="imu">
+        <always_on>true</always_on>
+        <update_rate>100</update_rate>
+        <imu>
+          <angular_velocity>
+            <x>
+              <noise type="GAUSSIAN">
+                <mean>0</mean>
+                <stddev>0.001</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="GAUSSIAN">
+                <mean>0</mean>
+                <stddev>0.001</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="GAUSSIAN">
+                <mean>0</mean>
+                <stddev>0.001</stddev>
+              </noise>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type="GAUSSIAN">
+                <mean>0</mean>
+                <stddev>0.01</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="GAUSSIAN">
+                <mean>0</mean>
+                <stddev>0.01</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="GAUSSIAN">
+                <mean>0</mean>
+                <stddev>0.01</stddev>
+              </noise>
+            </z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+    </link>
+
+    <!-- 四旋翼螺旋桨 (简化) -->
+    <!-- 电机1 - 前右 -->
+    <link name="rotor_1">
+      <pose>0.2 -0.2 0.25 0 0 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>0.0001</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.0001</iyy><iyz>0</iyz>
+          <izz>0.0002</izz>
+        </inertia>
+      </inertial>
+      <visual name="rotor1_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.2</radius>
+            <length>0.02</length>
+          </cylinder>
+        </geometry>
+      </visual>
+    </link>
+
+    <!-- 关节 (固定连接) -->
+    <joint name="rotor1_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>rotor_1</child>
+    </joint>
+
+  </model>
+</sdf>
