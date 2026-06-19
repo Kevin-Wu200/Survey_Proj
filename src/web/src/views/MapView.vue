@@ -2,7 +2,14 @@
   <div class="map-container">
     <!-- 场景选择工具栏 -->
     <div class="view-toolbar">
-      <span class="toolbar-label">🌐 3D 场景</span>
+      <button
+        class="view-toggle-btn"
+        :class="{ active: view2DEnabled }"
+        @click="toggleViewMode"
+        :disabled="!selectedScene"
+      >
+        {{ view2DEnabled ? '🗺️ 2D 地图' : '🌐 3D 地形' }}
+      </button>
       <select
         v-model="selectedScene"
         class="scene-select"
@@ -95,6 +102,10 @@ const scenes = ref<SceneInfo[]>([])
 const selectedScene = ref('')
 const isLoading = ref(false)
 const loadError = ref('')
+
+// 2D 地图模式
+const view2DEnabled = ref(false)
+let _2DMapLoaded = false
 
 // 仿真状态计算
 const simRunning = computed(() => simulation.isRunning.value)
@@ -200,6 +211,26 @@ async function onSceneChange(): Promise<void> {
       }
     }
 
+    // 加载 2D 地图平面（仅首次加载）
+    if (!_2DMapLoaded) {
+      try {
+        await threeScene.load2DMap('/api/scenes/2D_Map.png')
+        _2DMapLoaded = true
+        console.log('[MapView] 2D 地图平面已就绪')
+      } catch (e) {
+        console.warn('[MapView] 2D 地图加载失败（可忽略）:', e)
+      }
+    }
+
+    // 如果之前在 2D 模式，恢复视图
+    if (view2DEnabled.value) {
+      threeScene.setOrthographicCamera(true)
+      threeScene.set2DMapVisible(true)
+      // 隐藏 3D 地形
+      const currentModel = threeScene.getCurrentModel()
+      if (currentModel) currentModel.visible = false
+    }
+
     // 设置仿真坐标原点
     simulation.setGeoOrigin(geoOrigin.lat, geoOrigin.lng, geoOrigin.alt)
 
@@ -220,6 +251,29 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
+ * 切换 2D 地图 / 3D 地形视图
+ */
+function toggleViewMode(): void {
+  view2DEnabled.value = !view2DEnabled.value
+
+  if (view2DEnabled.value) {
+    // 切换到 2D 地图模式
+    threeScene.setOrthographicCamera(true)
+    threeScene.set2DMapVisible(true)
+    // 隐藏 3D 地形模型
+    const model = threeScene.getCurrentModel()
+    if (model) model.visible = false
+  } else {
+    // 切换到 3D 地形模式
+    threeScene.setOrthographicCamera(false)
+    threeScene.set2DMapVisible(false)
+    // 恢复 3D 地形模型
+    const model = threeScene.getCurrentModel()
+    if (model) model.visible = true
+  }
 }
 
 // =========================================================================
@@ -401,6 +455,38 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: bold;
   white-space: nowrap;
+}
+
+.view-toggle-btn {
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  outline: none;
+  min-width: 100px;
+}
+
+.view-toggle-btn:hover:not(:disabled) {
+  border-color: #00bcd4;
+  color: #00bcd4;
+  background: rgba(0, 188, 212, 0.1);
+}
+
+.view-toggle-btn.active {
+  border-color: #00bcd4;
+  color: #00bcd4;
+  background: rgba(0, 188, 212, 0.15);
+  font-weight: bold;
+}
+
+.view-toggle-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .scene-select {
