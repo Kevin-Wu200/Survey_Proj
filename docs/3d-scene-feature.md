@@ -221,6 +221,49 @@ watch(ugvState) → threeMarkers.updateUGV() → 更新 Sprite + 轨迹
 | Three.js 与 Vue 冲突 | shallowRef + markRaw 避免响应式追踪 |
 | 内存泄漏 | 严格的 dispose() 资源释放 + ResizeObserver 清理 |
 
+## 俯视地图摄影
+
+### 功能说明
+
+`scripts/topdown_map_render.py` 将 3D GLB 模型渲染为俯视视角的地图影像（类似卫星遥感影像）。
+
+核心特性：
+- **正交投影**：模拟卫星摄影的平行光线，无透视变形
+- **模型居中**：自动将模型中心平移至地图中心
+- **DEM 地形可视化**：基于深度图提取高程信息，应用地形渐变色（绿→黄→棕→白）
+- **山体阴影**：西北方向 45° 光照 hillshade 叠加，增强立体感
+
+### 使用方法
+
+```bash
+source venv/bin/activate
+python3 scripts/topdown_map_render.py "3D_Model/丘陵.glb" -r 2048 -o "3D_Model/丘陵_topdown.png"
+```
+
+### 参数说明
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `input` | 输入 GLB 模型路径（必填） | - |
+| `-o, --output` | 输出图像路径 | 模型同目录下 `{name}_topdown.png` |
+| `-r, --resolution` | 输出图像分辨率（正方形） | 2048 |
+| `-m, --margin` | 模型边缘留白比例 | 0.05 |
+| `--azimuth` | 太阳方位角（度，0=北 90=东） | 315（西北） |
+| `--altitude` | 太阳高度角（度，0=地平线 90=天顶） | 45 |
+
+### 输出文件
+
+| 文件 | 说明 |
+|------|------|
+| `{name}_topdown.png` | 卫星遥感影像风格的地图 |
+| `{name}_topdown.depth.png` | 归一化高程深度图（灰度） |
+
+### 依赖
+
+- `trimesh`：GLB 模型加载
+- `pyrender`：离线 3D 渲染
+- `numpy`, `Pillow`：图像处理与后处理
+
 ## 未来扩展
 
 - 3D 无人机/无人车模型替换 Sprites
