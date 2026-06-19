@@ -21,3 +21,8 @@ pyyaml>=6.0
 
 # 异步
 aiofiles>=23.2.0
+
+# 3D模型处理与渲染
+trimesh>=4.0.0
+pyrender>=0.1.45
+numba>=0.58.0

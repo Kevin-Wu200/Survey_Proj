@@ -1,212 +1,264 @@
 #!/usr/bin/env python3
 """
-俯视地图摄影脚本
-将3D GLB模型渲染为俯视视角的地图影像（类似卫星遥感影像）。
-模型中心即为地图中心，使用正交投影 + DEM地形可视化方案：
-- 深度图提取高程信息
-- 地形渐变色（绿→黄→棕→白）
-- 山体阴影（hillshade）增强立体感
+俯视地图摄影脚本（纹理版）
+将3D GLB模型渲染为俯视视角的高清地图影像。
+使用numba加速的软件光栅化，完整支持PBR纹理、UV贴图、Alpha混合。
+模型中心即为地图中心，正交投影模拟卫星摄影。
 """
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
 import trimesh
-import pyrender
-from PIL import Image, ImageFilter
+from PIL import Image
+from numba import njit, prange
 
 
 # ============================================================
-# 地形配色方案（类似卫星遥感影像/地形图）
+# Numba加速的软件光栅化渲染器
 # ============================================================
-def terrain_colormap():
-    """构建地形高程渐变色表：低处绿色→高处灰白色"""
-    return [
-        (0.00, np.array([34, 94, 43])),       # 低处：深绿（森林/植被）
-        (0.20, np.array([86, 138, 53])),       # 浅绿
-        (0.40, np.array([168, 178, 98])),      # 黄绿
-        (0.55, np.array([194, 163, 101])),     # 土黄
-        (0.70, np.array([161, 118, 76])),      # 棕色
-        (0.85, np.array([189, 170, 150])),     # 浅棕
-        (1.00, np.array([235, 230, 225])),     # 高处：灰白（岩石/雪）
-    ]
+
+@njit(cache=True)
+def _sample_tex_bilinear(tex, h, w, c, u, v):
+    """双线性纹理采样 (numba 加速)"""
+    u = max(0.0, min(1.0, u))
+    v = max(0.0, min(1.0, v))
+    fx = u * (w - 1)
+    fy = v * (h - 1)
+    x0 = int(fx)
+    y0 = int(fy)
+    x1 = min(x0 + 1, w - 1)
+    y1 = min(y0 + 1, h - 1)
+    tx = fx - x0
+    ty = fy - y0
+    result = np.zeros(c, dtype=np.float64)
+    for ch in range(c):
+        p00 = tex[y0, x0, ch]
+        p10 = tex[y0, x1, ch]
+        p01 = tex[y1, x0, ch]
+        p11 = tex[y1, x1, ch]
+        result[ch] = (p00 * (1 - tx) * (1 - ty) +
+                      p10 * tx * (1 - ty) +
+                      p01 * (1 - tx) * ty +
+                      p11 * tx * ty)
+    return result
 
 
-def apply_terrain_colormap(normalized_height, stops):
-    """将归一化高程映射到地形渐变色"""
-    h, w = normalized_height.shape
-    result = np.zeros((h, w, 3), dtype=np.float32)
-    for i in range(len(stops) - 1):
-        pos0, color0 = stops[i]
-        pos1, color1 = stops[i + 1]
-        mask = (normalized_height >= pos0) & (normalized_height < pos1)
-        if i == len(stops) - 2:
-            mask = (normalized_height >= pos0) & (normalized_height <= pos1)
-        if not np.any(mask):
+@njit(cache=True, parallel=True)
+def _rasterize_mesh_numba(px, py, depth_norm, faces, uv_coords,
+                           tex_array, tex_h, tex_w, tex_c,
+                           color_buf, depth_buf, has_alpha):
+    """Numba 加速的光栅化"""
+    n_tri = len(faces)
+    img_h, img_w = color_buf.shape[:2]
+
+    for i in prange(n_tri):
+        f = faces[i]
+        v0, v1, v2 = f[0], f[1], f[2]
+
+        x0, x1, x2 = px[v0], px[v1], px[v2]
+        y0, y1, y2 = py[v0], py[v1], py[v2]
+        z0, z1, z2 = depth_norm[v0], depth_norm[v1], depth_norm[v2]
+
+        # 包围盒
+        x_min = max(0, min(x0, x1, x2))
+        x_max = min(img_w - 1, max(x0, x1, x2))
+        y_min = max(0, min(y0, y1, y2))
+        y_max = min(img_h - 1, max(y0, y1, y2))
+
+        if x_min > x_max or y_min > y_max:
             continue
-        t = (normalized_height[mask] - pos0) / (pos1 - pos0 + 1e-8)
-        t = t[..., np.newaxis]
-        result[mask] = color0 * (1 - t) + color1 * t
-    return result.astype(np.uint8)
+
+        # 边函数的分母
+        denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+        if denom == 0.0:
+            continue
+        inv_denom = 1.0 / denom
+
+        # 遍历包围盒内的像素
+        for py_idx in range(y_min, y_max + 1):
+            for px_idx in range(x_min, x_max + 1):
+                # 重心坐标
+                w0 = ((y1 - y2) * (px_idx - x2) + (x2 - x1) * (py_idx - y2)) * inv_denom
+                w1 = ((y2 - y0) * (px_idx - x2) + (x0 - x2) * (py_idx - y2)) * inv_denom
+                w2 = 1.0 - w0 - w1
+
+                if w0 < -1e-6 or w1 < -1e-6 or w2 < -1e-6:
+                    continue
+
+                # 深度插值
+                z_interp = w0 * z0 + w1 * z1 + w2 * z2
+
+                # Z-buffer测试
+                if z_interp <= depth_buf[py_idx, px_idx]:
+                    continue
+
+                depth_buf[py_idx, px_idx] = z_interp
+
+                # 纹理采样
+                if uv_coords is not None and tex_array is not None:
+                    uv0x, uv0y = uv_coords[v0, 0], uv_coords[v0, 1]
+                    uv1x, uv1y = uv_coords[v1, 0], uv_coords[v1, 1]
+                    uv2x, uv2y = uv_coords[v2, 0], uv_coords[v2, 1]
+                    u = w0 * uv0x + w1 * uv1x + w2 * uv2x
+                    v = w0 * uv0y + w1 * uv1y + w2 * uv2y
+                    color = _sample_tex_bilinear(tex_array, tex_h, tex_w, tex_c, u, v)
+                    if has_alpha and tex_c >= 4:
+                        alpha = color[3] / 255.0
+                        for ch in range(3):
+                            old = color_buf[py_idx, px_idx, ch]
+                            color_buf[py_idx, px_idx, ch] = np.uint8(
+                                color[ch] * alpha + old * (1 - alpha))
+                    else:
+                        for ch in range(3):
+                            color_buf[py_idx, px_idx, ch] = np.uint8(color[ch])
+                else:
+                    g = np.uint8(z_interp * 255)
+                    color_buf[py_idx, px_idx, 0] = g
+                    color_buf[py_idx, px_idx, 1] = g
+                    color_buf[py_idx, px_idx, 2] = g
 
 
-def generate_hillshade(depth, azimuth_deg=315.0, altitude_deg=45.0, z_factor=1.0):
-    """
-    从深度图生成山体阴影。
-    azimuth_deg: 太阳方位角 0=北 90=东 180=南 270=西
-    altitude_deg: 太阳高度角 0=地平线 90=天顶
-    """
-    gy, gx = np.gradient(depth)
-    dzdx = -gx * z_factor
-    dzdy = -gy * z_factor
-    azimuth_rad = np.deg2rad(360.0 - azimuth_deg + 90.0)
-    altitude_rad = np.deg2rad(altitude_deg)
-    slope = np.arctan(z_factor * np.hypot(dzdx, dzdy))
-    aspect = np.arctan2(dzdy, -dzdx)
-    hillshade = (np.cos(altitude_rad) * np.cos(slope) +
-                 np.sin(altitude_rad) * np.sin(slope) *
-                 np.cos(azimuth_rad - aspect))
-    return np.clip(hillshade, 0, 1).astype(np.float32)
+def orthographic_projection(vertices, bbox_range, margin=0.05, resolution=2048):
+    """正交投影：3D顶点 → 2D屏幕坐标"""
+    half_size = max(bbox_range[0], bbox_range[1]) / 2 * (1 + margin)
+    scale = (resolution - 1) / (2 * half_size)
+    px = (vertices[:, 0] * scale + resolution / 2).astype(np.int32)
+    py = (resolution - 1 - (vertices[:, 1] * scale + resolution / 2)).astype(np.int32)
+    z_min, z_max = vertices[:, 2].min(), vertices[:, 2].max()
+    z_range = max(z_max - z_min, 1e-6)
+    depth_norm = (vertices[:, 2] - z_min) / z_range
+    return px, py, depth_norm.astype(np.float32)
+
+
+def prepare_texture(tex_img):
+    """准备纹理：转换各种模式为numpy数组 (uint8)"""
+    if tex_img is None:
+        return None, False
+
+    mode = tex_img.mode
+    if mode == 'LA':
+        arr = np.array(tex_img)
+        rgba = np.zeros((arr.shape[0], arr.shape[1], 4), dtype=np.uint8)
+        rgba[:, :, 0] = arr[:, :, 0]
+        rgba[:, :, 1] = arr[:, :, 0]
+        rgba[:, :, 2] = arr[:, :, 0]
+        rgba[:, :, 3] = arr[:, :, 1]
+        return rgba, True
+    elif mode == 'RGBA':
+        return np.array(tex_img), True
+    elif mode == 'RGB':
+        return np.array(tex_img), False
+    elif mode == 'P':
+        rgba = np.array(tex_img.convert('RGBA'))
+        has_alpha = (rgba[:, :, 3] < 255).any()
+        return rgba, has_alpha
+    elif mode == 'L':
+        arr = np.array(tex_img)
+        return np.stack([arr, arr, arr], axis=-1), False
+    else:
+        return np.array(tex_img.convert('RGB')), False
 
 
 # ============================================================
-# 核心处理流程
+# 主处理流程
 # ============================================================
 
 def load_and_center_model(glb_path):
-    """加载GLB模型，计算中心并平移到原点"""
+    """加载并居中模型"""
+    print(f"加载模型: {glb_path}")
     scene = trimesh.load(glb_path)
     if isinstance(scene, trimesh.Trimesh):
         scene = trimesh.Scene([scene])
 
-    all_vertices = []
+    all_verts = []
     for g in scene.geometry.values():
         if hasattr(g, 'vertices') and g.vertices is not None:
-            all_vertices.append(g.vertices)
-    if not all_vertices:
+            all_verts.append(g.vertices)
+    if not all_verts:
         raise ValueError("模型中没有找到有效的顶点数据")
 
-    all_vertices = np.vstack(all_vertices)
-    center = (all_vertices.min(axis=0) + all_vertices.max(axis=0)) / 2.0
-
+    all_verts = np.vstack(all_verts)
+    center = (all_verts.min(axis=0) + all_verts.max(axis=0)) / 2.0
     transform = trimesh.transformations.translation_matrix(-center)
     scene.apply_transform(transform)
-    vertices_centered = all_vertices - center
+    vertices_centered = all_verts - center
 
-    print(f"原始模型中心: {center}")
-    print(f"bbox范围: {vertices_centered.max(axis=0) - vertices_centered.min(axis=0)}")
-    return scene, vertices_centered
-
-
-def setup_pyrender_scene(mesh_scene):
-    """构建pyrender场景（白色材质用于深度渲染）"""
-    render_scene = pyrender.Scene(bg_color=[0.0, 0.0, 0.0, 1.0])
-    for geometry in mesh_scene.geometry.values():
-        if isinstance(geometry, trimesh.Trimesh):
-            mesh = pyrender.Mesh(
-                primitives=[pyrender.Primitive(
-                    positions=geometry.vertices.astype(np.float32),
-                    indices=geometry.faces.astype(np.int32),
-                    color_0=np.ones((len(geometry.vertices), 3), dtype=np.float32),
-                )])
-            render_scene.add(mesh)
-    return render_scene
+    bbox_range = vertices_centered.max(axis=0) - vertices_centered.min(axis=0)
+    print(f"模型中心: {center}")
+    print(f"平移后范围: {bbox_range}")
+    return scene, vertices_centered, bbox_range
 
 
-def setup_topdown_camera(scene, vertices, resolution=2048, margin=0.05):
-    """设置俯视正交相机"""
-    bbox_range = vertices.max(axis=0) - vertices.min(axis=0)
-    half_size = max(bbox_range[0], bbox_range[1]) / 2 * (1 + margin)
-    camera_z = vertices.max(axis=0)[2] + bbox_range[2] * 2
+def render_topdown(scene, vertices, bbox_range, resolution=4096, margin=0.05):
+    """主渲染函数：对所有mesh逐三角形光栅化"""
+    h, w = resolution, resolution
+    color_buf = np.full((h, w, 3), 220, dtype=np.uint8)
+    depth_buf = np.full((h, w), -1.0, dtype=np.float32)
 
-    camera = pyrender.OrthographicCamera(
-        xmag=half_size, ymag=half_size, znear=0.01, zfar=camera_z * 5)
-    # 相机从正上方俯视XY平面
-    camera_pose = np.array([
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-        [0, 0, 1, camera_z],
-        [0, 0, 0, 1]
-    ])
-    scene.add(camera, pose=camera_pose)
-    print(f"正交相机: half_size={half_size:.2f}, z={camera_z:.2f}")
-    return resolution
+    meshes = []
+    for name, geom in scene.geometry.items():
+        if isinstance(geom, trimesh.Trimesh) and geom.faces is not None and len(geom.faces) > 0:
+            meshes.append((name, geom))
 
+    total_tris = sum(len(m[1].faces) for m in meshes)
+    print(f"共 {len(meshes)} 个几何体, {total_tris:,} 个三角形")
 
-def render_depth(scene, resolution):
-    """渲染深度图"""
-    renderer = pyrender.OffscreenRenderer(resolution, resolution)
-    scene.add(pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=3.0),
-              pose=np.eye(4))
-    _, depth = renderer.render(scene)
-    renderer.delete()
-    return depth
+    rendered = 0
+    t0 = time.time()
+    for name, geom in meshes:
+        verts = geom.vertices
+        faces = geom.faces.astype(np.int32)
+        uv = geom.visual.uv
 
+        # 投影
+        px, py, depth_norm = orthographic_projection(
+            verts, bbox_range, margin, resolution)
 
-def create_satellite_image(depth, output_path, azimuth=315.0, altitude=45.0):
-    """将深度图转换为卫星遥感影像风格的地图"""
-    # Y轴翻转匹配图像坐标（OpenGL渲染时Y轴朝上，图像坐标Y轴朝下）
-    depth = np.flipud(depth)
+        # 纹理
+        tex_img = None
+        has_alpha = False
+        if hasattr(geom.visual, 'material') and geom.visual.material is not None:
+            mat = geom.visual.material
+            if hasattr(mat, 'baseColorTexture') and mat.baseColorTexture is not None:
+                tex_img = mat.baseColorTexture
 
-    valid_mask = depth > 0
-    if not np.any(valid_mask):
-        raise ValueError("深度图中没有有效数据")
+        tex_arr_np = np.zeros((1, 1, 3), dtype=np.uint8)  # dummy
+        tex_h = tex_w = tex_c = 1
+        if tex_img is not None:
+            tex_arr_np, has_alpha = prepare_texture(tex_img)
+            tex_h, tex_w = tex_arr_np.shape[:2]
+            tex_c = tex_arr_np.shape[2] if tex_arr_np.ndim == 3 else 1
 
-    valid_depth = depth[valid_mask]
-    d_min, d_max = valid_depth.min(), valid_depth.max()
-    print(f"深度范围: [{d_min:.6f}, {d_max:.6f}]")
+        uv_arr = uv.astype(np.float64) if uv is not None else np.zeros((1, 2))
 
-    # 归一化高程（深度越大=离相机越远=高程越低）
-    normalized = np.zeros_like(depth)
-    normalized[valid_mask] = 1.0 - (depth[valid_mask] - d_min) / (d_max - d_min + 1e-8)
+        # Numba 光栅化
+        _rasterize_mesh_numba(
+            px, py, depth_norm, faces, uv_arr,
+            tex_arr_np, tex_h, tex_w, tex_c,
+            color_buf, depth_buf, has_alpha)
 
-    # 地形渐变色
-    stops = terrain_colormap()
-    colored = apply_terrain_colormap(normalized, stops)
+        rendered += 1
+        if rendered % 5 == 0:
+            elapsed = time.time() - t0
+            print(f"  进度: {rendered}/{len(meshes)} ({elapsed:.1f}s)")
 
-    # 山体阴影叠加
-    hillshade = generate_hillshade(depth, azimuth_deg=azimuth,
-                                   altitude_deg=altitude, z_factor=2.0)
-    shadow_factor = 0.5
-    result = np.zeros_like(colored, dtype=np.float32)
-    for c in range(3):
-        channel = colored[:, :, c].astype(np.float32)
-        shaded = channel * (1.0 - shadow_factor + shadow_factor * hillshade)
-        result[:, :, c] = np.clip(shaded, 0, 255)
-
-    result[~valid_mask] = [220, 220, 220]  # 背景浅灰
-    result = result.astype(np.uint8)
-
-    # 轻微锐化并保存
-    img = Image.fromarray(result)
-    img = img.filter(ImageFilter.SHARPEN)
-    img.save(output_path)
-    print(f"卫星影像已保存至: {output_path}")
-
-    # 保存归一化深度图（已翻转，直接保存）
-    depth_vis = np.zeros_like(depth, dtype=np.uint8)
-    depth_vis[valid_mask] = (normalized[valid_mask] * 255).astype(np.uint8)
-    depth_path = str(Path(output_path).with_suffix('.depth.png'))
-    Image.fromarray(depth_vis).save(depth_path)
-    print(f"深度图已保存至: {depth_path}")
-    return result
+    elapsed = time.time() - t0
+    print(f"光栅化完成: {elapsed:.1f}s")
+    return color_buf, depth_buf
 
 
 def main():
-    parser = argparse.ArgumentParser(description='3D模型俯视地图摄影')
+    parser = argparse.ArgumentParser(description='3D模型俯视地图摄影（纹理版）')
     parser.add_argument('input', type=str, help='输入GLB模型路径')
-    parser.add_argument('-o', '--output', type=str, default=None,
-                        help='输出图像路径')
-    parser.add_argument('-r', '--resolution', type=int, default=2048,
-                        help='输出分辨率 (默认2048)')
+    parser.add_argument('-o', '--output', type=str, default=None, help='输出图像路径')
+    parser.add_argument('-r', '--resolution', type=int, default=4096,
+                        help='输出分辨率 (默认4096)')
     parser.add_argument('-m', '--margin', type=float, default=0.05,
                         help='边缘留白比例 (默认0.05)')
-    parser.add_argument('--azimuth', type=float, default=315.0,
-                        help='太阳方位角 (默认315=西北)')
-    parser.add_argument('--altitude', type=float, default=45.0,
-                        help='太阳高度角 (默认45)')
 
     args = parser.parse_args()
     input_path = Path(args.input)
@@ -214,25 +266,35 @@ def main():
         print(f"错误: 文件不存在: {args.input}", file=sys.stderr)
         sys.exit(1)
 
-    output_path = args.output or str(input_path.parent / f"{input_path.stem}_topdown.png")
+    output_path = args.output or str(
+        input_path.parent / f"{input_path.stem}_topdown.png")
 
-    print(f"加载模型: {args.input}")
-    mesh_scene, vertices = load_and_center_model(args.input)
+    scene, vertices, bbox_range = load_and_center_model(args.input)
 
-    print("构建渲染场景...")
-    render_scene = setup_pyrender_scene(mesh_scene)
+    print(f"开始渲染 ({args.resolution}x{args.resolution})...")
+    t_start = time.time()
+    color_buf, depth_buf = render_topdown(
+        scene, vertices, bbox_range, resolution=args.resolution, margin=args.margin)
 
-    print("设置俯视正交相机...")
-    setup_topdown_camera(render_scene, vertices,
-                          resolution=args.resolution, margin=args.margin)
+    # 保存
+    img = Image.fromarray(color_buf)
+    img.save(output_path)
+    size_kb = Path(output_path).stat().st_size / 1024
+    print(f"地图影像已保存至: {output_path} ({size_kb:.0f} KB)")
 
-    print("渲染深度图...")
-    depth = render_depth(render_scene, args.resolution)
-    print(f"深度图: {depth.shape}, 有效像素: {(depth > 0).sum()}")
+    depth_vis = np.zeros_like(depth_buf, dtype=np.uint8)
+    valid = depth_buf >= 0
+    if valid.any():
+        dmin, dmax = depth_buf[valid].min(), depth_buf[valid].max()
+        depth_vis[valid] = ((depth_buf[valid] - dmin) / max(dmax - dmin, 1e-8) * 255).astype(np.uint8)
+    depth_path = str(Path(output_path).with_suffix('.depth.png'))
+    Image.fromarray(depth_vis).save(depth_path)
+    print(f"深度图已保存至: {depth_path}")
 
-    print("生成卫星遥感影像...")
-    create_satellite_image(depth, output_path,
-                            azimuth=args.azimuth, altitude=args.altitude)
+    covered = valid.sum()
+    total_px = args.resolution * args.resolution
+    print(f"覆盖像素: {covered:,} / {total_px:,} ({covered / total_px * 100:.1f}%)")
+    print(f"总耗时: {time.time() - t_start:.1f}s")
     print("\n完成! 模型中心即为地图中心。")
 
 
