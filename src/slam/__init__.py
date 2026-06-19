@@ -22,6 +22,7 @@ from .loop_closure import LoopClosureDetector
 from .realtime_opt import RealtimeOptimizer
 from .robustness import RobustnessEnhancer
 from .consistency import ConsistencyChecker
+from .persistence import DatabaseManager
 
 __all__ = [
     "Pose3D", "KeyFrame", "TopoNode", "TopoEdge", "TopoGraph",
@@ -31,4 +32,5 @@ __all__ = [
     "UAVTopologyMapper", "UGVMultiSensorFusion",
     "CollaborativeOptimizer", "LoopClosureDetector",
     "RealtimeOptimizer", "RobustnessEnhancer", "ConsistencyChecker",
+    "DatabaseManager",
 ]

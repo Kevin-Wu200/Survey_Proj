@@ -30,10 +30,13 @@ from typing import Dict, List, Optional, Set
 from dataclasses import dataclass, field, asdict
 from collections import deque
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 import uvicorn
+
+# 数据持久化层
+from slam.persistence import DatabaseManager as _PersistenceDB
 
 
 # =============================================================================
@@ -400,7 +403,8 @@ app.add_middleware(
 async def root():
     return {'service': 'AirRunway Ground Station', 'version': '0.2.0',
             'features': ['waypoint_mission', 'autonomous_nav', 'task_replay',
-                         'sim_real_switch', 'fault_tolerance', '3d_scene_support'],
+                         'sim_real_switch', 'fault_tolerance', '3d_scene_support',
+                         'data_persistence'],
             'sim_mode': SIM_MODE}
 
 @app.get('/api/status')
@@ -1012,6 +1016,405 @@ async def get_scene_file(filename: str):
     media_type = content_type_map.get(ext, 'application/octet-stream')
 
     return FileResponse(file_path, media_type=media_type)
+
+
+# =============================================================================
+# REST API — 数据持久化 (PostgreSQL + PostGIS)
+# =============================================================================
+
+# 数据库管理器单例 (延迟初始化，连接不可用时返回适当错误)
+_db_manager: Optional[_PersistenceDB] = None
+
+
+def _get_db() -> Optional[_PersistenceDB]:
+    """
+    获取数据库管理器实例。
+    数据库未连接时返回 None（不抛异常），调用方需检查。
+    """
+    global _db_manager
+    if _db_manager is None:
+        try:
+            from slam.persistence import _load_db_config
+        except ImportError:
+            return None
+        try:
+            _db_manager = _PersistenceDB()
+            _db_manager.connect()
+        except Exception as e:
+            print(f"[DB] 数据库连接失败: {e}")
+            return None
+    return _db_manager
+
+
+# -----------------------------------------------------------------------------
+# 4.1 测绘任务管理
+# -----------------------------------------------------------------------------
+
+@app.post('/api/tasks')
+async def create_survey_task(data: dict):
+    """
+    创建测绘任务。
+    请求体: {
+        "task_name": "xxx",
+        "task_type": "fusion",        // uav_survey / ugv_survey / fusion
+        "uav_id": "UAV-001",          // 可选
+        "ugv_id": "UGV-001",          // 可选
+        "area_sqm": 5000.0,           // 可选
+        "notes": "测试任务",           // 可选
+        "metadata": {}                // 可选，JSON 扩展元数据
+    }
+    返回: { "task_id": 1, "status": "ok" }
+    """
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+    try:
+        with db.transaction():
+            task_id = db.create_task({
+                'task_name': data['task_name'],
+                'task_type': data.get('task_type', 'fusion'),
+                'uav_id': data.get('uav_id'),
+                'ugv_id': data.get('ugv_id'),
+                'area_sqm': data.get('area_sqm'),
+                'notes': data.get('notes'),
+                'metadata': data.get('metadata', {}),
+            })
+        return {'task_id': task_id, 'status': 'ok'}
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.get('/api/tasks')
+async def list_survey_tasks(
+    status: Optional[str] = Query(default=None, description="按状态过滤: pending/running/completed/failed"),
+    limit: int = Query(default=50, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """
+    列出测绘任务，支持状态过滤和分页。
+    查询参数:
+        status  - 可选，任务状态过滤
+        limit   - 每页数量 (最大200)
+        offset  - 偏移量
+    """
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+    try:
+        tasks = db.list_tasks(status=status, limit=limit, offset=offset)
+        return JSONResponse(tasks)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.get('/api/tasks/{task_id}')
+async def get_survey_task(task_id: int):
+    """
+    获取测绘任务详情，含任务信息、航点、统计信息。
+    """
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+    try:
+        task = db.get_task(task_id)
+        if task is None:
+            return JSONResponse({'error': '任务不存在'}, status_code=404)
+
+        # 附加统计信息
+        stats = db.get_task_statistics(task_id)
+        task['statistics'] = stats
+        return JSONResponse(task)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.put('/api/tasks/{task_id}/status')
+async def update_task_status(task_id: int, data: dict):
+    """
+    更新任务状态。
+    请求体: { "status": "running" }
+    """
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+    try:
+        new_status = data.get('status', '')
+        if new_status not in ('pending', 'running', 'completed', 'failed'):
+            return JSONResponse({'error': f'无效状态: {new_status}'}, status_code=400)
+        db.update_task_status(task_id, new_status)
+        return {'status': 'ok', 'task_id': task_id, 'new_status': new_status}
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+# -----------------------------------------------------------------------------
+# 4.2 航点管理
+# -----------------------------------------------------------------------------
+
+@app.post('/api/tasks/{task_id}/waypoints')
+async def add_waypoints(task_id: int, data: dict):
+    """
+    批量添加航点到指定任务。
+    请求体: {
+        "waypoints": [
+            {
+                "sequence_index": 0,
+                "latitude": 30.123,
+                "longitude": 120.456,
+                "altitude": 50.0,
+                "speed": 8.0,
+                "heading": 90.0,
+                "action": "photo"
+            }
+        ]
+    }
+    """
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+
+    waypoints_raw = data.get('waypoints', [])
+    if not waypoints_raw:
+        return JSONResponse({'error': '航点列表为空'}, status_code=400)
+
+    try:
+        count = db.insert_waypoints(task_id, waypoints_raw)
+        return {'status': 'ok', 'task_id': task_id, 'count': count}
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.get('/api/tasks/{task_id}/waypoints')
+async def get_waypoints(task_id: int):
+    """获取指定任务的所有航点。"""
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+    try:
+        waypoints = db.get_waypoints(task_id)
+        return JSONResponse(waypoints)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+# -----------------------------------------------------------------------------
+# 4.3 轨迹数据
+# -----------------------------------------------------------------------------
+
+@app.get('/api/tasks/{task_id}/trajectory')
+async def get_task_trajectory(
+    task_id: int,
+    vehicle_type: Optional[str] = Query(default=None, description="载具类型: uav / ugv"),
+):
+    """
+    获取任务轨迹数据。
+    查询参数:
+        vehicle_type  - 可选，按载具类型过滤 (uav / ugv)
+    """
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+    try:
+        traj = db.get_task_trajectory(task_id, vehicle_type=vehicle_type)
+        return JSONResponse(traj)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+# -----------------------------------------------------------------------------
+# 4.4 融合成果
+# -----------------------------------------------------------------------------
+
+@app.get('/api/tasks/{task_id}/fusion')
+async def get_fusion_results(task_id: int):
+    """获取指定任务的融合成果列表。"""
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+    try:
+        results = db.get_fusion_results(task_id=task_id)
+        return JSONResponse(results)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.post('/api/tasks/{task_id}/fusion')
+async def save_fusion_result(
+    task_id: int,
+    metadata: str = Form(default='{}', description="融合元数据 JSON"),
+    coarse_rmse: float = Form(default=None),
+    fine_rmse: float = Form(default=None),
+    icp_iterations: int = Form(default=None),
+    transform_matrix: str = Form(default=None, description="16元素变换矩阵 JSON"),
+    uav_pointcloud: UploadFile = File(default=None),
+    ugv_pointcloud: UploadFile = File(default=None),
+    fused_pointcloud: UploadFile = File(default=None),
+    fused_mesh: UploadFile = File(default=None),
+):
+    """
+    保存融合成果（支持文件上传 + 元数据）。
+    表单字段:
+        metadata           - 融合元数据 JSON 字符串
+        coarse_rmse        - 粗配准 RMSE
+        fine_rmse          - 精配准 RMSE
+        icp_iterations     - ICP 迭代次数
+        transform_matrix   - 4x4变换矩阵 JSON 数组
+    文件字段:
+        uav_pointcloud     - UAV 点云文件
+        ugv_pointcloud     - UGV 点云文件
+        fused_pointcloud   - 融合后点云文件
+        fused_mesh         - 融合网格文件
+    """
+    import shutil
+
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+
+    try:
+        # 确保上传目录存在
+        upload_dir = Path(__file__).resolve().parent.parent.parent / 'data' / 'fusion_results'
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        # 保存上传文件
+        saved_paths: Dict[str, Optional[str]] = {}
+        file_map = {
+            'uav_pointcloud': uav_pointcloud,
+            'ugv_pointcloud': ugv_pointcloud,
+            'fused_pointcloud': fused_pointcloud,
+            'fused_mesh': fused_mesh,
+        }
+
+        for key, upload_file in file_map.items():
+            if upload_file is not None and upload_file.filename:
+                dest_path = upload_dir / f'task_{task_id}_{key}_{upload_file.filename}'
+                with open(dest_path, 'wb') as f:
+                    shutil.copyfileobj(upload_file.file, f)
+                saved_paths[key] = str(dest_path)
+            else:
+                saved_paths[key] = None
+
+        # 解析元数据
+        fusion_metadata = json.loads(metadata) if metadata else {}
+        transform_list = json.loads(transform_matrix) if transform_matrix else None
+
+        fusion_data = {
+            'task_id': task_id,
+            'uav_pointcloud_path': saved_paths.get('uav_pointcloud'),
+            'ugv_pointcloud_path': saved_paths.get('ugv_pointcloud'),
+            'fused_pointcloud_path': saved_paths.get('fused_pointcloud'),
+            'mesh_path': saved_paths.get('fused_mesh'),
+            'coarse_rmse': coarse_rmse,
+            'fine_rmse': fine_rmse,
+            'icp_iterations': icp_iterations,
+            'transform_matrix': transform_list,
+            'metadata': fusion_metadata,
+        }
+
+        fusion_id = db.save_fusion_result(fusion_data)
+        return {
+            'status': 'ok',
+            'fusion_id': fusion_id,
+            'task_id': task_id,
+            'saved_paths': saved_paths,
+        }
+    except json.JSONDecodeError as e:
+        return JSONResponse({'error': f'JSON 解析失败: {e}'}, status_code=400)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+# -----------------------------------------------------------------------------
+# 4.5 三维模型管理
+# -----------------------------------------------------------------------------
+
+@app.get('/api/models')
+async def list_models(
+    task_id: Optional[int] = Query(default=None, description="按任务过滤"),
+    model_type: Optional[str] = Query(default=None, description="模型类型: pointcloud/mesh/textured_mesh"),
+    limit: int = Query(default=50, le=200),
+):
+    """
+    列出三维模型元数据。
+    查询参数:
+        task_id    - 可选，按任务 ID 过滤
+        model_type - 可选，按模型类型过滤
+        limit      - 返回数量限制
+    """
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+    try:
+        models = db.get_models(task_id=task_id, model_type=model_type, limit=limit)
+        return JSONResponse(models)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@app.get('/api/models/{model_id}/download')
+async def download_model(model_id: int):
+    """
+    下载模型文件。
+    从 model_metadata 表中查询 file_path，返回文件流。
+    """
+    db = _get_db()
+    if db is None:
+        return JSONResponse({'error': '数据库不可用'}, status_code=503)
+    try:
+        model = db.get_model_by_id(model_id)
+        if model is None:
+            return JSONResponse({'error': '模型不存在'}, status_code=404)
+
+        file_path = Path(model['file_path'])
+        if not file_path.exists() or not file_path.is_file():
+            return JSONResponse({'error': f'模型文件不存在: {model["file_path"]}'}, status_code=404)
+
+        # 安全检查：防止路径遍历攻击
+        try:
+            file_path.resolve().relative_to(Path.cwd())
+        except ValueError:
+            return JSONResponse({'error': '文件路径超出允许范围'}, status_code=403)
+
+        return FileResponse(
+            path=str(file_path),
+            filename=file_path.name,
+            media_type='application/octet-stream',
+        )
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+# -----------------------------------------------------------------------------
+# 4.6 系统统计概览
+# -----------------------------------------------------------------------------
+
+@app.get('/api/statistics')
+async def system_statistics():
+    """
+    系统统计概览：
+        - 任务总数、各状态分布
+        - 测绘总面积
+        - 最近任务列表
+        - 轨迹点/模型/融合成果总数
+    """
+    db = _get_db()
+    if db is None:
+        # 数据库不可用时返回空统计
+        return JSONResponse({
+            'total_tasks': 0,
+            'total_area_sqm': 0.0,
+            'status_counts': {},
+            'recent_tasks': [],
+            'total_trajectory_points': 0,
+            'total_models': 0,
+            'total_fusions': 0,
+            'note': '数据库不可用',
+        })
+    try:
+        stats = db.get_system_statistics()
+        return JSONResponse(stats)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
 # =============================================================================
