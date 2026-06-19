@@ -37,16 +37,21 @@
     - 地面站本地 SSD 缓存目录结构设计
     输出：可录制并回放 UAV/UGV 运行过程的数据包
 
-□ 1.5 Web 端远程监测最小原型
-    - 搭建 Vue3 + TypeScript + 高德地图 JS API v2.0 前端骨架
-      （npm create vue@latest 脚手架初始化）
-    - 后端搭建（Python FastAPI + WebSocket，uvicorn 直接启动）
-    - 前端启动方式：npm run dev（Vite 开发服务器）
-    - 实现：
-      □ UAV/UGV 实时位置在高德地图上标绘（经纬度坐标）
-      □ 无人机/无人车基本状态显示（连接状态、经纬度）
-      □ 实时位姿数据通过 WebSocket 推送至前端
-    输出：Web 页面可看到 UAV/UGV 图标在地图上移动
+☑ 1.5 Web 端远程监测最小原型
+    架构：Vue3 + TypeScript + Three.js（3D 场景）+ 2D 地图纹理叠加
+    - ✓ Vue3 + TypeScript 前端骨架（Vite 开发服务器）
+    - ✓ 后端搭建（Python FastAPI + WebSocket，uvicorn 直接启动）
+    - ✓ Three.js 3D 场景初始化 + GLB 地形模型加载
+    - ✓ 2D 地图纹理平面叠加（2D_Map.png + .pgw 世界配准）
+    - ✓ 2D/3D 视图一键切换（正交俯视 ↔ 透视）
+    - ✓ UAV/UGV 实时位置在 3D 场景中 Sprite 标绘 + 轨迹线
+    - ✓ 无人机/无人车基本状态面板（连接状态、经纬度、电池）
+    - ☑ 航点工具栏（WaypointToolbar）：自定义航线 / 多边形 / 蛇形
+    - ☑ 前端仿真引擎（UAV 椭圆航线 + UGV 贴地行驶 + 坡度检测）
+    - ☑ 场景切换（/api/scenes 端点 → GLB 模型列表 → Three.js 加载）
+    - ☑ 实时位姿数据通过 WebSocket 推送至前端
+    输出：Web 页面可看到 UAV/UGV 图标在 2D 地图 / 3D 地形上移动
+    注：高德地图 JS API 已加载但未实例化（历史遗留），地图容器由 Three.js 驱动
 
 □ 1.6 主链路联调验证
     - 场景：无人机起飞执行简单航线 → 无人车同时遥控移动

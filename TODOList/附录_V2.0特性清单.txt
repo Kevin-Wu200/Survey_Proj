@@ -17,7 +17,8 @@ V2.0 迭代中实现。
     - 在 Web 前端使用 Three.js 实时渲染融合中的三维模型
     - 支持增量式 Mesh 更新（边重建边显示）
     - 支持视角旋转 / 缩放 / 剖切
-    - 前端技术栈：Vue3 + TypeScript + Three.js（与 V1.0 统一）
+    - 前端技术栈：Vue3 + TypeScript + Three.js（与 V1.0 统一，Three.js 已为地图容器引擎）
+      ✓ V1.0 已实现：Three.js 3D 场景 + GLB 模型加载 + OrbitControls + 2D 地图纹理叠加
     优先级：低
     依赖：V2.1 纹理映射 ✅ / 四阶段数据融合管道 ✅
 
