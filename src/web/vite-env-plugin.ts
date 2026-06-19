@@ -3,8 +3,7 @@
  *
  * 功能:
  * - 读取 env.txt (key=value 格式)
- * - 通过 define 注入全局常量 (__AMAP_KEY__, __BACKEND_HOST__ 等)
- * - 通过 transformIndexHtml 替换 HTML 中的高德地图 script src
+ * - 通过 define 注入全局常量 (__BACKEND_HOST__ 等)
  *
  * 用法:
  *   import { envPlugin } from './vite-env-plugin'
@@ -70,17 +69,6 @@ export function envPlugin(
 
     configResolved(resolvedConfig) {
       config = resolvedConfig
-    },
-
-    /** 替换 index.html 中的高德地图 script src，使用 env.txt 中的 AMAP_KEY */
-    transformIndexHtml(html) {
-      const envVars = parseEnvFile(envFilePath)
-      const amapKey = envVars['AMAP_KEY'] || ''
-
-      return html.replace(
-        /https:\/\/webapi\.amap\.com\/maps\?v=2\.0&key=[^"]*/g,
-        `https://webapi.amap.com/maps?v=2.0&key=${amapKey}`,
-      )
     },
   }
 }

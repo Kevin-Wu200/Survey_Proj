@@ -30,8 +30,7 @@
 │  工具栏：[🗺️ 2D 地图] [🌐 3D 场景]  [场景: ▼ 场景A]  │
 ├─────────────────────────────────────────────────────────┤
 │              .map-container (100%宽高)                  │
-│  AMap 模式：<div id="amap-container">                 │
-│  GLB 模式：<div id="three-container"> (WebGL Canvas)  │
+│  <div id="three-container"> (WebGL Canvas)             │
 │     ├── 3D 地形 (GLB 模型，可选隐藏)                     │
 │     ├── 2D 地图平面 (2D_Map.png 纹理，可选显示)          │
 │     ├── UAV/UGV 标记 (Sprite)                           │
@@ -78,7 +77,7 @@ watch(ugvState) → threeMarkers.updateUGV() → 更新 Sprite + 轨迹
 | 新增 | `src/web/src/composables/useTerrainQuery.ts` | 地形高度与坡度查询 |
 | 新增 | `src/web/src/composables/useSimulation.ts` | 前端仿真引擎 |
 | 新增 | `docs/3d-scene-feature.md` | 本文档 |
-| 修改 | `src/web/src/views/MapView.vue` | 纯3D模式（已移除AMap） |
+| 修改 | `src/web/src/views/MapView.vue` | 纯 Three.js 3D 模式 |
 | 修改 | `src/web/package.json` | 添加 three 依赖 |
 | 修改 | `src/backend/main.py` | 新增 /api/scenes 端点 + SIM_MODE 控制 |
 | 修改 | `.gitignore` | 添加 3D_Model GLB 规则 |
@@ -222,7 +221,7 @@ watch(ugvState) → threeMarkers.updateUGV() → 更新 Sprite + 轨迹
 |------|---------|
 | 大模型加载性能 | GLB 二进制格式 + DRACO 压缩 + 加载进度提示 |
 | GPS 坐标精度损失 | 相对坐标偏移 + 双精度浮点数 |
-| 低性能设备兼容 | WebGL 检测 + 降级为 AMap 模式 |
+| 低性能设备兼容 | WebGL 检测 + 降级为 2D 地图模式 |
 | Three.js 与 Vue 冲突 | shallowRef + markRaw 避免响应式追踪 |
 | 内存泄漏 | 严格的 dispose() 资源释放 + ResizeObserver 清理 |
 

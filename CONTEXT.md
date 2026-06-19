@@ -12,7 +12,6 @@
 | UGV | 无人车（Unmanned Ground Vehicle），使用四轮差速底盘模型 |
 | 地面站 | Ground Station，负责数据汇聚、存储、处理和 Web 服务 |
 | DDS | Data Distribution Service，ROS2 底层通信中间件 |
-| 高德地图 | AMap，高德软件有限公司，提供地图 JS API |
 | ros2 bag | ROS2 数据录制工具，用于存储传感器数据包 |
 
 ## 系统架构
@@ -43,10 +42,10 @@
        └──────────┬───────────────┘
                   │
        ┌──────────▼───────────────┐
-       │    Web 前端 (Vue3)        │
-       │  - 高德地图地图展示          │
-       │  - UAV/UGV 实时标绘       │
-       │  - 状态面板               │
+       │    Web 前端 (Vue3 + Three.js)   │
+       │  - 3D 场景地形展示 + 2D 地图叠加 │
+       │  - UAV/UGV 实时标绘              │
+       │  - 状态面板                      │
        └──────────────────────────┘
 ```
 
@@ -55,7 +54,7 @@
 - **仿真**: ROS2 Humble + Gazebo Garden
 - **通信**: CycloneDDS (RMW_IMPLEMENTATION)
 - **后端**: Python FastAPI + WebSocket + uvicorn (v0.2.0)
-- **前端**: Vue 3 + TypeScript + Pinia + 高德地图 JS API v2.0
+- **前端**: Vue 3 + TypeScript + Pinia + Three.js
 - **构建**: colcon (ROS2) + Vite (前端)
 - **数据存储**: ros2 bag (SQLite3) + 本地 SSD 缓存
 - **自主导航**: Nav2 + Cartographer 2D SLAM (仿真模式)
@@ -66,7 +65,6 @@
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `AMAP_KEY` | 高德地图 JS API 密钥 | (必填) |
 | `FRONTEND_HOST` | 前端 Vite 服务器监听地址 | `0.0.0.0` |
 | `FRONTEND_PORT` | 前端端口 | `3000` |
 | `BACKEND_HOST` | 后端 FastAPI 监听地址 | `0.0.0.0` |
@@ -77,7 +75,7 @@
 **初始化配置**:
 ```bash
 cp env.txt.example env.txt
-# 编辑 env.txt，填入你的 AMAP_KEY
+# 编辑 env.txt，按需调整端口和地址
 ```
 
 配置优先级: 环境变量 > env.txt > 默认值

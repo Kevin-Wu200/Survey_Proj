@@ -54,7 +54,7 @@
   - `POST /api/replay/load` — 加载回放会话
   - `POST /api/replay/control` — 回放控制 (play/pause/stop/seek)
   - `GET /api/replay/frame` — 获取当前回放帧
-- **前端**: TimelineControl 组件支持自定义时间轴，高德地图回放 UAV/UGV 历史轨迹
+- **前端**: TimelineControl 组件支持自定义时间轴，Three.js 场景回放 UAV/UGV 历史轨迹
 - **倍速回放**: 支持 0.5× / 1× / 2× / 4× / 8× 多档速度
 
 ### 2.5 仿真/实物模式切换
