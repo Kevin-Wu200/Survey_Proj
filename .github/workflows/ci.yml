@@ -124,10 +124,10 @@ jobs:
         run: npm ci --prefer-offline || npm install
 
       - name: TypeScript 类型检查
-        run: npx vue-tsc --noEmit 2>&1 | tee ../tsc-check.log || true
+        run: npx vue-tsc --noEmit 2>&1 | tee tsc-check.log || true
 
       - name: Vite 构建
-        run: npm run build 2>&1 | tee ../vite-build.log
+        run: npm run build 2>&1 | tee vite-build.log
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
@@ -141,8 +141,8 @@ jobs:
         with:
           name: frontend-build-logs
           path: |
-            src/web/../tsc-check.log
-            src/web/../vite-build.log
+            src/web/tsc-check.log
+            src/web/vite-build.log
 
   # ════════════════════════════════════════════════════════════════════
   # Job 4: ROS2 包编译检查（需要 ROS2 Humble 环境）
