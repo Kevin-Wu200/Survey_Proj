@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 from PIL import Image
-from numba import njit, prange
+from numba import njit
 
 
 # ============================================================
@@ -23,7 +23,10 @@ from numba import njit, prange
 
 @njit(cache=True)
 def _sample_tex_bilinear(tex, h, w, c, u, v):
-    """双线性纹理采样 (numba 加速)"""
+    """双线性纹理采样 (numba 加速)
+    - 含 Alpha 通道时使用预乘 Alpha 插值，避免透明像素 RGB 颜色渗出 (白边问题)
+    - 参考: Porter-Duff premultiplied alpha compositing
+    """
     u = max(0.0, min(1.0, u))
     v = max(0.0, min(1.0, v))
     fx = u * (w - 1)
@@ -34,28 +37,71 @@ def _sample_tex_bilinear(tex, h, w, c, u, v):
     y1 = min(y0 + 1, h - 1)
     tx = fx - x0
     ty = fy - y0
+    # 双线性权重
+    w00 = (1.0 - tx) * (1.0 - ty)
+    w10 = tx * (1.0 - ty)
+    w01 = (1.0 - tx) * ty
+    w11 = tx * ty
+    has_alpha = (c >= 4)
     result = np.zeros(c, dtype=np.float64)
-    for ch in range(c):
-        p00 = tex[y0, x0, ch]
-        p10 = tex[y0, x1, ch]
-        p01 = tex[y1, x0, ch]
-        p11 = tex[y1, x1, ch]
-        result[ch] = (p00 * (1 - tx) * (1 - ty) +
-                      p10 * tx * (1 - ty) +
-                      p01 * (1 - tx) * ty +
-                      p11 * tx * ty)
+    if has_alpha:
+        # 预乘 Alpha 插值: 先对每个纹素的 RGB 乘以其 Alpha/255，再插值
+        # 这样透明像素 (alpha=0) 的 RGB 贡献为 0，不会产生白边
+        a00 = tex[y0, x0, 3] / 255.0
+        a10 = tex[y0, x1, 3] / 255.0
+        a01 = tex[y1, x0, 3] / 255.0
+        a11 = tex[y1, x1, 3] / 255.0
+        # 插值 Alpha
+        alpha_interp = a00 * w00 + a10 * w10 + a01 * w01 + a11 * w11
+        result[3] = alpha_interp * 255.0
+        if alpha_interp > 1e-8:
+            # RGB 预乘后插值，再还原
+            for ch in range(3):
+                premul = (tex[y0, x0, ch] * a00 * w00 +
+                          tex[y0, x1, ch] * a10 * w10 +
+                          tex[y1, x0, ch] * a01 * w01 +
+                          tex[y1, x1, ch] * a11 * w11)
+                result[ch] = premul / alpha_interp
+        else:
+            # 全透明区域: 使用不带权重的标准插值作为回退
+            for ch in range(3):
+                result[ch] = (tex[y0, x0, ch] * w00 +
+                              tex[y0, x1, ch] * w10 +
+                              tex[y1, x0, ch] * w01 +
+                              tex[y1, x1, ch] * w11)
+    else:
+        for ch in range(c):
+            p00 = tex[y0, x0, ch]
+            p10 = tex[y0, x1, ch]
+            p01 = tex[y1, x0, ch]
+            p11 = tex[y1, x1, ch]
+            result[ch] = (p00 * w00 + p10 * w10 + p01 * w01 + p11 * w11)
     return result
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True)
 def _rasterize_mesh_numba(px, py, depth_norm, faces, uv_coords,
                            tex_array, tex_h, tex_w, tex_c,
-                           color_buf, depth_buf, has_alpha):
-    """Numba 加速的光栅化"""
+                           color_buf, depth_buf, has_alpha,
+                           alpha_mode, alpha_cutoff,
+                           base_color_factor):
+    """Numba 加速的光栅化 (单线程版本，消除 parallel 竞争写入)
+    - alpha_mode: 0=OPAQUE, 1=BLEND, 2=MASK
+    - alpha_cutoff: MASK 模式的透明度阈值 [0.0, 1.0]
+    - base_color_factor: [R, G, B] 0-255 uint8 颜色因子，None 则为 [255,255,255]
+    """
     n_tri = len(faces)
     img_h, img_w = color_buf.shape[:2]
 
-    for i in prange(n_tri):
+    # 默认 baseColorFactor 为白色(无影响)
+    if base_color_factor is None:
+        bf_r, bf_g, bf_b = 1.0, 1.0, 1.0
+    else:
+        bf_r = base_color_factor[0] / 255.0
+        bf_g = base_color_factor[1] / 255.0
+        bf_b = base_color_factor[2] / 255.0
+
+    for i in range(n_tri):
         f = faces[i]
         v0, v1, v2 = f[0], f[1], f[2]
 
@@ -89,14 +135,12 @@ def _rasterize_mesh_numba(px, py, depth_norm, faces, uv_coords,
                 if w0 < -1e-6 or w1 < -1e-6 or w2 < -1e-6:
                     continue
 
-                # 深度插值
+                # 深度插值 (使用全局归一化的深度值)
                 z_interp = w0 * z0 + w1 * z1 + w2 * z2
 
-                # Z-buffer测试
+                # Z-buffer测试 (注意: 正交投影下z越大越靠近相机)
                 if z_interp <= depth_buf[py_idx, px_idx]:
                     continue
-
-                depth_buf[py_idx, px_idx] = z_interp
 
                 # 纹理采样
                 if uv_coords is not None and tex_array is not None:
@@ -106,31 +150,53 @@ def _rasterize_mesh_numba(px, py, depth_norm, faces, uv_coords,
                     u = w0 * uv0x + w1 * uv1x + w2 * uv2x
                     v = w0 * uv0y + w1 * uv1y + w2 * uv2y
                     color = _sample_tex_bilinear(tex_array, tex_h, tex_w, tex_c, u, v)
-                    if has_alpha and tex_c >= 4:
+
+                    # Alpha MASK 模式: 低于阈值的片元完全丢弃
+                    if alpha_mode == 2 and tex_c >= 4:
+                        if color[3] / 255.0 < alpha_cutoff:
+                            continue
+
+                    # 应用 baseColorFactor
+                    sr = np.float64(color[0]) * bf_r
+                    sg = np.float64(color[1]) * bf_g
+                    sb = np.float64(color[2]) * bf_b
+
+                    if (alpha_mode == 1) and has_alpha and tex_c >= 4:
+                        # BLEND 模式: 预乘 Alpha 混合
                         alpha = color[3] / 255.0
                         for ch in range(3):
+                            src = [sr, sg, sb][ch]
                             old = color_buf[py_idx, px_idx, ch]
                             color_buf[py_idx, px_idx, ch] = np.uint8(
-                                color[ch] * alpha + old * (1 - alpha))
+                                src * alpha + old * (1.0 - alpha))
                     else:
-                        for ch in range(3):
-                            color_buf[py_idx, px_idx, ch] = np.uint8(color[ch])
+                        # OPAQUE 或无 Alpha
+                        color_buf[py_idx, px_idx, 0] = np.uint8(sr)
+                        color_buf[py_idx, px_idx, 1] = np.uint8(sg)
+                        color_buf[py_idx, px_idx, 2] = np.uint8(sb)
+
+                    depth_buf[py_idx, px_idx] = z_interp
+
                 else:
                     g = np.uint8(z_interp * 255)
                     color_buf[py_idx, px_idx, 0] = g
                     color_buf[py_idx, px_idx, 1] = g
                     color_buf[py_idx, px_idx, 2] = g
+                    depth_buf[py_idx, px_idx] = z_interp
 
 
-def orthographic_projection(vertices, bbox_range, margin=0.05, resolution=2048):
-    """正交投影：3D顶点 → 2D屏幕坐标"""
+def orthographic_projection(vertices, bbox_range, global_z_min, global_z_max,
+                           margin=0.05, resolution=2048):
+    """正交投影：3D顶点 → 2D屏幕坐标
+    - global_z_min, global_z_max: 所有 mesh 统一的全局深度范围，
+      确保跨 mesh 的 Z-buffer 深度比较正确
+    """
     half_size = max(bbox_range[0], bbox_range[1]) / 2 * (1 + margin)
     scale = (resolution - 1) / (2 * half_size)
     px = (vertices[:, 0] * scale + resolution / 2).astype(np.int32)
     py = (resolution - 1 - (vertices[:, 1] * scale + resolution / 2)).astype(np.int32)
-    z_min, z_max = vertices[:, 2].min(), vertices[:, 2].max()
-    z_range = max(z_max - z_min, 1e-6)
-    depth_norm = (vertices[:, 2] - z_min) / z_range
+    z_range = max(global_z_max - global_z_min, 1e-6)
+    depth_norm = (vertices[:, 2] - global_z_min) / z_range
     return px, py, depth_norm.astype(np.float32)
 
 
@@ -207,6 +273,14 @@ def render_topdown(scene, vertices, bbox_range, resolution=4096, margin=0.05):
     total_tris = sum(len(m[1].faces) for m in meshes)
     print(f"共 {len(meshes)} 个几何体, {total_tris:,} 个三角形")
 
+    # 计算全局 Z 范围 (用于统一深度归一化，修复跨 mesh Z-buffer 比较错误)
+    all_z = []
+    for _, geom in meshes:
+        all_z.append(geom.vertices[:, 2])
+    global_z_min = float(np.concatenate(all_z).min())
+    global_z_max = float(np.concatenate(all_z).max())
+    print(f"全局深度范围: Z=[{global_z_min:.2f}, {global_z_max:.2f}]")
+
     rendered = 0
     t0 = time.time()
     for name, geom in meshes:
@@ -214,17 +288,37 @@ def render_topdown(scene, vertices, bbox_range, resolution=4096, margin=0.05):
         faces = geom.faces.astype(np.int32)
         uv = geom.visual.uv
 
-        # 投影
+        # 投影 (使用全局 Z 范围进行深度归一化)
         px, py, depth_norm = orthographic_projection(
-            verts, bbox_range, margin, resolution)
+            verts, bbox_range, global_z_min, global_z_max, margin, resolution)
 
-        # 纹理
+        # 纹理和材质属性
         tex_img = None
         has_alpha = False
+        alpha_mode = 0  # 0=OPAQUE, 1=BLEND, 2=MASK
+        alpha_cutoff = 0.5  # glTF 默认值
+        base_color_factor = None  # [R, G, B] uint8
+
         if hasattr(geom.visual, 'material') and geom.visual.material is not None:
             mat = geom.visual.material
             if hasattr(mat, 'baseColorTexture') and mat.baseColorTexture is not None:
                 tex_img = mat.baseColorTexture
+            # 读取 alphaMode: trimesh 4.x 支持 BLEND / MASK / OPAQUE
+            if hasattr(mat, 'alphaMode') and mat.alphaMode is not None:
+                am = str(mat.alphaMode).upper()
+                if am == 'BLEND':
+                    alpha_mode = 1
+                elif am == 'MASK':
+                    alpha_mode = 2
+            # 读取 alphaCutoff (trimesh 可能不解析，使用 glTF 默认 0.5)
+            if hasattr(mat, 'alphaCutoff') and mat.alphaCutoff is not None:
+                alpha_cutoff = float(mat.alphaCutoff)
+            # 读取 baseColorFactor (trimesh 4.x 转为 uint8 [0-255])
+            if hasattr(mat, 'baseColorFactor') and mat.baseColorFactor is not None:
+                bf = mat.baseColorFactor
+                if len(bf) >= 3:
+                    base_color_factor = np.array(
+                        [bf[0], bf[1], bf[2]], dtype=np.float64)
 
         tex_arr_np = np.zeros((1, 1, 3), dtype=np.uint8)  # dummy
         tex_h = tex_w = tex_c = 1
@@ -235,11 +329,12 @@ def render_topdown(scene, vertices, bbox_range, resolution=4096, margin=0.05):
 
         uv_arr = uv.astype(np.float64) if uv is not None else np.zeros((1, 2))
 
-        # Numba 光栅化
+        # Numba 光栅化 (单线程版本，避免竞争写入)
         _rasterize_mesh_numba(
             px, py, depth_norm, faces, uv_arr,
             tex_arr_np, tex_h, tex_w, tex_c,
-            color_buf, depth_buf, has_alpha)
+            color_buf, depth_buf, has_alpha,
+            alpha_mode, alpha_cutoff, base_color_factor)
 
         rendered += 1
         if rendered % 5 == 0:

@@ -264,6 +264,25 @@ python3 scripts/topdown_map_render.py "3D_Model/丘陵.glb" -r 2048 -o "3D_Model
 - `numba`：JIT 编译加速光栅化
 - `Pillow`：图像读写
 
+### 渲染质量修复 (2024-06)
+
+`scripts/topdown_map_render.py` 已完成以下关键修复，确保植被、树木、树叶等透明纹理的正确渲染：
+
+| 修复项 | 问题描述 | 解决方案 |
+|--------|----------|----------|
+| 预乘 Alpha 双线性采样 | 透明像素 (alpha=0) 的 RGB 颜色 (如白色) 在插值边界处渗出，产生白边伪影 | `_sample_tex_bilinear` 中实现 Porter-Duff 预乘 Alpha 插值：每个纹素的 RGB 乘以其 Alpha 后再插值，确保透明像素颜色贡献为零 |
+| 全局 Z-Buffer 深度归一化 | 各 mesh 独立计算深度范围归一化，导致不同 mesh 间 Z-buffer 比较失效（如 fence 和 rock 深度值不可比较） | `orthographic_projection` 改为接收全局 `global_z_min/max`，所有 mesh 使用统一深度尺度 |
+| Numba parallel 竞争写入 | `prange` 多线程并发写入 `depth_buf` 和 `color_buf`，Z-buffer test-write 非原子操作导致像素丢失/闪烁 | 移除 `parallel=True` 及 `prange`，改为单线程 `range` 光栅化（4096×4096 仍仅需 ~1.5s） |
+| glTF Alpha Mode 支持 | 未区分 OPAQUE/BLEND/MASK 三种模式，所有 RGBA 纹理统一做简单 Alpha 混合 | 新增 `alpha_mode` 参数：BLEND (预乘混合)、MASK (低于 `alphaCutoff` 丢弃)、OPAQUE (忽略 Alpha) |
+| baseColorFactor 应用 | 材质的 `baseColorFactor` 被忽略，导致颜色偏差 | 采样纹理颜色后乘以 `baseColorFactor`（trimesh 4.x 已转为 uint8 [0-255]） |
+
+**测试结果** (`丘陵.glb`, 27 mesh, 341K 三角形, 4096×4096):
+- 零白边像素 (>250 RGB): 0 / 9,086,806
+- 深度边缘白像素: 0
+- 纯白像素 (255,255,255): 0
+- 绿色植被像素占比: 31.0%
+- 渲染耗时: 1.5s
+
 ## 未来扩展
 
 - 3D 无人机/无人车模型替换 Sprites
